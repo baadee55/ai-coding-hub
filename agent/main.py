@@ -6,6 +6,7 @@ import uvicorn
 import os
 import re
 import time
+import secrets
 from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
@@ -39,6 +40,11 @@ if not API_TOKEN or API_TOKEN in ("change-me-now", "changeme", "default", "test"
         " 例: AGENT_TOKEN=$(python -c \"import secrets; print(secrets.token_urlsafe(32))\")"
     )
 
+
+def _token_eq(candidate: str) -> bool:
+    """AGENT_TOKEN の定数時間比較（タイミング攻撃で総当たりを助けないため）。"""
+    return secrets.compare_digest(candidate or "", API_TOKEN)
+
 # ===== 認証 =====
 # 経由パターン:
 #   1) JWT (Passkey ログイン後発行) → middleware で検証 → 既存ルータの verify_token を通すため
@@ -59,7 +65,8 @@ PUBLIC_AUTH_PATHS = (
 
 def verify_token(authorization: str = Header(None)):
     # middleware 通過後はヘッダが AGENT_TOKEN に書き換わってる
-    if not authorization or authorization != f"Bearer {API_TOKEN}":
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
+    if not _token_eq(token):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -101,7 +108,7 @@ async def auth_middleware(request: Request, call_next):
         accepted = True
 
     # 2) AGENT_TOKEN
-    if not accepted and token == API_TOKEN:
+    if not accepted and _token_eq(token):
         # passkey 登録済み + リモートからの場合は拒否
         if _auth.has_any_credentials() and not is_local:
             return JSONResponse(
@@ -118,7 +125,7 @@ async def auth_middleware(request: Request, call_next):
         return JSONResponse({"detail": "認証が必要です"}, status_code=401)
 
     # 既存ルータの verify_token を通すためヘッダを AGENT_TOKEN に正規化
-    if token != API_TOKEN:
+    if not _token_eq(token):
         new_headers = [(k, v) for k, v in request.scope["headers"] if k != b"authorization"]
         new_headers.append((b"authorization", f"Bearer {API_TOKEN}".encode()))
         request.scope["headers"] = new_headers
@@ -139,7 +146,7 @@ def _rate_key_and_limit(request: Request) -> tuple[str, int]:
     auth_hdr = request.headers.get("authorization", "")
     if auth_hdr.startswith("Bearer "):
         token = auth_hdr[7:]
-        if token == API_TOKEN:
+        if _token_eq(token):
             return ("agent_token", _RATE_LIMIT_AUTH)
         payload = _jwt_payload(request, token)
         if payload:

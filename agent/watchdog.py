@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 import httpx
 import subprocess
 import os
+import secrets
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -20,7 +21,8 @@ app = FastAPI(title="AI Hub Watchdog", docs_url=None, redoc_url=None)
 
 
 def verify_token(authorization: str = Header(None)):
-    if not authorization or authorization != f"Bearer {API_TOKEN}":
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
+    if not secrets.compare_digest(token, API_TOKEN):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
