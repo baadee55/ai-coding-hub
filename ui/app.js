@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "49";
+window.APP_JS_VERSION = "50";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -1295,8 +1295,12 @@ function micRender(interim) {
 }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SR) {
-  // 非対応ブラウザ（例: iOS の一部・古い Android Chrome）ではボタン自体を隠す
+// iOS(iPhone/iPad) は Web Speech が不安定なので、アプリ内マイクは出さず
+// ネイティブのキーボード音声入力（🎤キー）にフォールバックさせる。
+const _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (!SR || _isIOS) {
+  // 非対応ブラウザ / iOS ではボタン自体を隠す（iOS はキーボードの🎤で音声入力）
   $micBtn.style.display = "none";
 } else {
   recognition = new SR();

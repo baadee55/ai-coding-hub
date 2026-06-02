@@ -16,5 +16,10 @@ ui/*-qr.png
 # 大きいバイナリ（各自ダウンロード。tunnel-setup/README.md 参照）
 tunnel-setup/*.exe
 
+# 税務フォーム等の個人文書（Stripe/GitHub Sponsors のDLが紛れ込むことがある・絶対に公開しない）
+tax-*.pdf
+*-w8-*.pdf
+*-w9-*.pdf
+
 # 実行時ログ・PID（マシン固有・ノイズ）
 logs/
