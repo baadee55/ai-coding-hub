@@ -104,11 +104,28 @@ CLAUDE.md を読んで `.env` の雛形を埋めてくれます。
 
 ---
 
-## ⭐ Support / 募金
+## 💜 Support / 寄付 <a id="support"></a>
 
-OSS です。各自が自分の Claude アカ・自分のPCで動かすため、こちらに継続コストは発生しません。
-気に入ったら **GitHub Sponsors**（[Sponsor]ボタン）や Ko-fi で応援してもらえると嬉しいです。
-設定は [.github/FUNDING.yml](.github/FUNDING.yml)。
+OSS（MIT）です。各自が自分の Claude アカ・自分のPCで動かすため、こちらに継続コストは発生しません。
+気に入ったら応援してもらえると、メンテと Mac/Linux 対応の励みになります 🙏
+
+**2 つの方法 / Two ways to support:**
+
+### 1. GitHub Sponsors（fiat / カード）
+[![Sponsor](https://img.shields.io/badge/Sponsor-baadee55-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/baadee55)
+→ https://github.com/sponsors/baadee55
+
+### 2. Crypto（口座不要・世界中どこからでも / no account needed）
+送金が一番ラクなのは **USDT (TRC20)**。
+
+| Coin / Network | Address |
+|---|---|
+| **ETH / ERC-20 / USDT-ERC20** | `0xD9397E6d6e2b45eaf38182fbE93213bf63A97b50` |
+| **USDT — TRON (TRC20)** | `TL2QgdD9684N7bjfYFT9e5Mc6PBwoXAbC9` |
+| **BTC** | `33SU1T3Dip6btiLS8FnDMoDu8xFYvUuuHz` |
+
+> ⚠️ 必ず**ネットワークを一致**させて送ってください（TRC20宛にERC20で送る等は紛失します）。
+> Please match the network exactly when sending.
 
 ## License
 [MIT](LICENSE)。`ANTHROPIC_API_KEY` 課金・任意コマンド実行のリスクは利用者の自己責任です。
