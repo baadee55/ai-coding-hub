@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="'Yu Gothic UI','Yu Gothic','Meiryo','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ea4aaa"/>
+      <stop offset="1" stop-color="#a371f7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="8" fill="url(#accent)"/>
+
+  <text x="80" y="150" fill="#ffffff" font-size="64" font-weight="800">📱 AI Coding Hub</text>
+  <text x="80" y="216" fill="#c9d1d9" font-size="38" font-weight="600">スマホから自宅PCの Claude Code を動かす</text>
+
+  <text x="80" y="308" fill="#7ee787" font-size="30" font-weight="600">✓  自分の Claude プランで動く — API課金ゼロ</text>
+  <text x="80" y="360" fill="#7ee787" font-size="30" font-weight="600">✓  ポート開放なし（Cloudflare Tunnel）</text>
+  <text x="80" y="412" fill="#7ee787" font-size="30" font-weight="600">✓  セルフホスト・オープンソース（MIT）</text>
+
+  <g transform="translate(80,470)">
+    <rect x="0" y="0" width="170" height="90" rx="14" fill="#21262d" stroke="#30363d" stroke-width="2"/>
+    <text x="85" y="55" fill="#e6edf3" font-size="30" text-anchor="middle">📱 スマホ</text>
+    <text x="206" y="55" fill="#8b949e" font-size="34" text-anchor="middle">→</text>
+    <rect x="242" y="0" width="200" height="90" rx="14" fill="#21262d" stroke="#30363d" stroke-width="2"/>
+    <text x="342" y="55" fill="#e6edf3" font-size="30" text-anchor="middle">🔒 トンネル</text>
+    <text x="478" y="55" fill="#8b949e" font-size="34" text-anchor="middle">→</text>
+    <rect x="514" y="0" width="210" height="90" rx="14" fill="#21262d" stroke="#30363d" stroke-width="2"/>
+    <text x="619" y="55" fill="#e6edf3" font-size="30" text-anchor="middle">💻 自分のPC</text>
+  </g>
+
+  <text x="1200" y="600" fill="#a371f7" font-size="30" font-weight="700" text-anchor="end">github.com/baadee55/ai-coding-hub</text>
+</svg>
