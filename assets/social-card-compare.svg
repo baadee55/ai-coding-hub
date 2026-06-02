@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="-apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ea4aaa"/>
+      <stop offset="1" stop-color="#a371f7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="8" fill="url(#accent)"/>
+
+  <text x="64" y="92" fill="#ffffff" font-size="50" font-weight="800">Why AI Coding Hub?</text>
+  <text x="64" y="138" fill="#c9d1d9" font-size="27" font-weight="600">Your PC. Your plan. Your AI. — from your phone.</text>
+
+  <!-- divider -->
+  <line x1="640" y1="176" x2="640" y2="600" stroke="#30363d" stroke-width="2"/>
+
+  <!-- column headers -->
+  <text x="64"  y="214" fill="#8b949e" font-size="28" font-weight="700">☁️  Cloud AI tools</text>
+  <text x="672" y="214" fill="#7ee787" font-size="28" font-weight="800">🏠  AI Coding Hub</text>
+
+  <!-- rows: left (muted, ✗) vs right (green, ✓) -->
+  <g font-size="25">
+    <text x="64"  y="288" fill="#8b949e">✗  Runs in their cloud sandbox</text>
+    <text x="672" y="288" fill="#e6edf3" font-weight="600">✓  Runs on YOUR PC (real files &amp; tools)</text>
+
+    <text x="64"  y="352" fill="#8b949e">✗  Metered API / compute $$</text>
+    <text x="672" y="352" fill="#e6edf3" font-weight="600">✓  Your own plan — $0 API bill</text>
+
+    <text x="64"  y="416" fill="#8b949e">✗  Locked to one vendor</text>
+    <text x="672" y="416" fill="#e6edf3" font-weight="600">✓  Claude · Codex · Gemini · Antigravity</text>
+
+    <text x="64"  y="480" fill="#8b949e">✗  Your code on their servers</text>
+    <text x="672" y="480" fill="#e6edf3" font-weight="600">✓  Stays on your machine</text>
+
+    <text x="64"  y="544" fill="#8b949e">✗  Closed source</text>
+    <text x="672" y="544" fill="#e6edf3" font-weight="600">✓  MIT — fork &amp; customize</text>
+  </g>
+
+  <text x="1216" y="606" fill="#a371f7" font-size="26" font-weight="700" text-anchor="end">github.com/baadee55/ai-coding-hub</text>
+</svg>
