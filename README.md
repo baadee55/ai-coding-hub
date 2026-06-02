@@ -5,6 +5,8 @@
 
 スマホでアプリを開く → IDE とプロジェクトを選ぶ → 自然言語で指示 → 自宅PCの Claude Code が実行 → 人間語で結果を返す。
 
+> 🔌 既定は **Claude Code** ですが、**Gemini CLI / Codex CLI など他の AI エージェントも設定だけで追加可能**（[エンジン](#-エンジン--claude-code-既定--他のai-cliも設定で追加--bring-your-own)）。中継基盤はエンジン非依存です。
+
 [日本語](#日本語) ・ [English](#english) ・ [⭐ Sponsor / 募金](#-support--募金)
 
 ---
@@ -94,13 +96,40 @@ Open `http://127.0.0.1:8765/ui/` **locally** to register your phone via Passkey 
 
 ---
 
-## 🛠 フォーク/改造（AIコーディング向け）
+## 🔌 エンジン — Claude Code 既定 ＋ 他のAI CLIも設定で追加 / Bring your own
 
-このリポジトリは **自分の Claude にフォークを編集させて使う**ことを想定しています。
-改造時に触る個人設定は **すべて `agent/.env` と `agent/config.json` に集約**されており、
-コードには個人ドメイン・パス・トークンを焼いていません。詳しくは [CLAUDE.md](CLAUDE.md) の
-「フォーク時に変える場所」を参照。Claude Code に「このプロジェクトを自分用に設定して」と言えば、
-CLAUDE.md を読んで `.env` の雛形を埋めてくれます。
+中継・UI・認証・トンネルは **エンジン非依存**。実際にコードを書くエンジンは差し替え可能です。
+
+- **Claude Code**（既定）… 専用アダプタでツール呼び出しの構造化表示・会話継続(resume)に対応。
+- **その他の CLI**（Gemini CLI / Codex CLI など）… **コードを書かず `agent/config.json` の設定だけ**で追加できます（`generic_cli` が起動して出力を素テキストで返す“二級”対応）。
+
+```jsonc
+// agent/config.json （雛形は config.example.json）
+"default_engine": "claude_code",
+"engines": {
+  "gemini": { "cmd": "gemini", "args": ["-p", "{prompt}"], "prompt_via": "arg",  "strip_env": ["GEMINI_API_KEY"] },
+  "codex":  { "cmd": "codex",  "args": ["exec"],            "prompt_via": "stdin", "strip_env": ["OPENAI_API_KEY"] }
+}
+```
+`{prompt}`/`{cwd}` を置換、`prompt_via` で標準入力/引数を選択、`strip_env` でそのエンジンの
+**APIキー課金を回避**（＝Claude と同じ“サブスクで動かす・API課金ゼロ”の思想を各エンジンで踏襲）。
+Codex CLI（ChatGPT契約）・Gemini CLI（Googleアカウント）も同じく自分のサブスク枠で動かせます。
+
+> リッチ表示・resume が要るエンジンは専用アダプタ（`engines/claude_code.py` 相当）を1枚足せばOK。
+
+## 🤖 自分の AI エージェントでカスタムするのが正解
+
+このリポジトリは **「あなたのお使いの AI コーディングエージェント（Claude Code 等）に読み込ませて、
+自分用に改造して使う」** ことを前提に作っています。個人設定は **すべて `agent/.env` と
+`agent/config.json` に集約**、コードには個人ドメイン・パス・トークンを焼いていません。
+
+おすすめの使い方:
+1. フォークを clone して、**あなたの AI エージェントにこのリポジトリ＋[CLAUDE.md](CLAUDE.md) を読ませる**
+2. 「自分用に設定して」「Gemini CLI を使えるように engines に追加して」「UIをこう変えて」と頼む
+3. エージェントが CLAUDE.md の固定事項を踏まえて `.env`/`config.json`/コードを編集
+
+→ 公式の“全部入りUI”を待つより、**各自が自分のエージェントで好きに拡張**するのが速くて自由。
+詳細は [CLAUDE.md](CLAUDE.md) の「フォーク時に変える場所」を参照。
 
 ---
 

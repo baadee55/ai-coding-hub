@@ -21,7 +21,26 @@ from pydantic import BaseModel
 
 from jobs import manager
 from engines import claude_code as engine_cc
-from routers.projects import ensure_allowed_path
+from engines import generic_cli
+from routers.projects import ensure_allowed_path, load_config
+
+# 専用アダプタを持つエンジン（リッチ表示・resume 対応）。
+# それ以外は config.json の "engines" を読んで generic_cli（設定駆動・素テキスト）で動かす。
+DEDICATED_ENGINES = {"claude_code": engine_cc}
+
+
+def _resolve_engine(name: Optional[str]):
+    """(engine_name, adapter_module, engine_config) を返す。
+    既定は claude_code（未設定・未知のときも安全側に claude_code へフォールバック）。"""
+    cfg = load_config()
+    engines = cfg.get("engines") or {}
+    chosen = name or cfg.get("default_engine") or "claude_code"
+    if chosen in DEDICATED_ENGINES:
+        return chosen, DEDICATED_ENGINES[chosen], None
+    ec = engines.get(chosen)
+    if ec:
+        return chosen, generic_cli, ec
+    return "claude_code", engine_cc, None
 
 
 router = APIRouter()
@@ -63,6 +82,9 @@ class CommandRequest(BaseModel):
     extra_context: Optional[str] = None
     # Claude Code のモデルエイリアス (haiku / sonnet / opus)。省略時は Claude Code のデフォルト。
     model_override: Optional[str] = None
+    # 使用エンジン。省略時は config.json の default_engine、無ければ claude_code。
+    # claude_code 以外は config.json の "engines" 定義を generic_cli で起動。
+    engine: Optional[str] = None
 
 
 class CommandResponse(BaseModel):
@@ -85,17 +107,21 @@ def _spawn_job(req: CommandRequest):
     ensure_allowed_path(req.project_path)
     instruction = _build_instruction(req)
 
+    engine_name, adapter, engine_cfg = _resolve_engine(req.engine)
+
     async def runner(job):
-        await engine_cc.run(
-            job,
+        kwargs = dict(
             instruction=instruction,
             project_path=req.project_path,
             permission_mode="bypassPermissions",
             model=req.model_override,
         )
+        if engine_cfg is not None:
+            kwargs["config"] = engine_cfg
+        await adapter.run(job, **kwargs)
 
     return manager.create(
-        engine="claude_code",
+        engine=engine_name,
         instruction=instruction,
         runner=runner,
         project_path=req.project_path,
