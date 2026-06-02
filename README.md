@@ -17,7 +17,8 @@ clone して、**お使いの AI コーディングエージェント（Claude C
 
 > このリポジトリの `README.md` `CLAUDE.md` `AGENTS.md` を読んで、**AI Coding Hub をこの PC・この端末用にセットアップ**して。
 > ⚠️ `ANTHROPIC_API_KEY` は絶対に設定しないこと。`setup.ps1` を使い、`agent/.env` と `agent/config.json` を私の環境に合わせて作り、
-> 私のエンジン（Claude Code 等）で実際に動くか検証して、動かなければ直して。終わったら使い方を3行で教えて。
+> 私のエンジン（Claude Code 等）で実際に動くか検証して、動かなければ直して。
+> **UI 表示が私の言語でなければ、`ui/i18n.js` に私の言語の辞書を足して翻訳して**。終わったら使い方を3行で教えて。
 
 手動で設定したい人は 📘 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。使い方が分からなくなったら、このリポを読ませた AI エージェントに聞くのが最速。
 

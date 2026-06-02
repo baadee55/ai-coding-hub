@@ -13,7 +13,7 @@
   <title>AI hub β</title>
   <!-- アプリ版数。UIを変えたらここを上げる。app.js?v / sw.js?v が新URLになり
        Cloudflareのエッジキャッシュを貫通して最新が届く。index.html自体は no-store。 -->
-  <script>window.APP_VERSION = "50";</script>
+  <script>window.APP_VERSION = "51";</script>
   <link rel="manifest" href="/ui/manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
@@ -22,6 +22,8 @@
        /lib/core.min.js 等は CommonJS 版で window では "module is not defined" を投げるので使わない。 -->
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- 軽量 i18n（EN/JA 切替）。?v は APP_VERSION と揃える（三点同期の対象に準じる） -->
+  <script src="/ui/i18n.js?v=51"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
@@ -413,31 +415,32 @@
 <div class="header">
   <div class="header-title">
     AI hub β
-    <span class="header-sub">PCのAI作業の続きをスマホから</span>
+    <span class="header-sub" data-i18n="header.sub">PCのAI作業の続きをスマホから</span>
   </div>
   <div class="status-pill">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">確認中</span>
   </div>
   <button class="icon-btn" id="updateAppBtn" title="アプリを更新（最新版を取得）">🔄</button>
+  <button class="icon-btn" id="langToggleBtn" title="Language / 言語">🌐</button>
   <button class="icon-btn" id="helpBtn" title="使い方ヘルプ">❓</button>
   <button class="icon-btn" id="settingsBtn">⚙️</button>
 </div>
 
 <!-- セットアップ画面（初回） -->
 <div id="setupScreen">
-  <h2>🔌 はじめに接続設定</h2>
-  <p>PCのエージェントに接続するために<br>URLとトークンを設定してください。<br>QRコードをスキャンすると自動入力されます。</p>
+  <h2 data-i18n="setup.title">🔌 はじめに接続設定</h2>
+  <p data-i18n-html="setup.desc">PCのエージェントに接続するために<br>URLとトークンを設定してください。<br>QRコードをスキャンすると自動入力されます。</p>
   <div class="setup-box">
     <div>
-      <label>エージェントURL</label>
+      <label data-i18n="setup.url">エージェントURL</label>
       <input id="setupUrl" type="url" placeholder="https://your-tunnel.example.com" autocomplete="off">
     </div>
     <div>
-      <label>トークン（パスワード）</label>
-      <input id="setupToken" type="text" placeholder="トークンを貼り付け" autocomplete="off" autocorrect="off" spellcheck="false">
+      <label data-i18n="setup.token">トークン（パスワード）</label>
+      <input id="setupToken" type="text" placeholder="トークンを貼り付け" data-i18n-ph="setup.tokenPh" autocomplete="off" autocorrect="off" spellcheck="false">
     </div>
-    <button class="btn-primary" id="setupSaveBtn">接続する</button>
+    <button class="btn-primary" id="setupSaveBtn" data-i18n="setup.connect">接続する</button>
   </div>
 </div>
 
@@ -449,7 +452,7 @@
 
   <!-- プロジェクトバー -->
   <div class="project-bar">
-    <select id="projectSelect"><option value="">プロジェクトを選択</option></select>
+    <select id="projectSelect"><option value="" data-i18n="proj.select">プロジェクトを選択</option></select>
     <button class="model-pill" id="modelPill"  title="タップで Claude Code モデル切替（デフォルト/Haiku/Sonnet/Opus）" style="display:none;">デフォルト</button>
     <button class="btn-sm" id="newConvBtn"  title="新しい会話を開始（セッションを切る）">🆕</button>
     <button class="btn-sm" id="jobsBtn"     title="ジョブ履歴・実行中">🗂</button>
@@ -484,7 +487,7 @@
 
   <!-- 入力エリア（入力欄は全幅・大きく、操作ボタンは下段に分離） -->
   <div class="input-area">
-    <textarea id="instruction" placeholder="指示を入力…（🕘で履歴・⭐でお気に入り）" rows="4"></textarea>
+    <textarea id="instruction" placeholder="指示を入力…（🕘で履歴・⭐でお気に入り）" data-i18n-ph="input.ph" rows="4"></textarea>
     <input id="attachInput" type="file" accept="image/*,.txt,.md,.json,.log" multiple style="display:none;">
     <div class="input-toolbar">
       <div class="toolbar-left">
@@ -504,36 +507,36 @@
 <div class="drawer-overlay" id="drawerOverlay"></div>
 <div id="settingsDrawer">
   <div class="drawer-section">
-    <div class="drawer-title">⚙️ 設定</div>
+    <div class="drawer-title" data-i18n="settings.title">⚙️ 設定</div>
   </div>
 
   <div class="drawer-section">
-    <div class="drawer-section-title">接続</div>
+    <div class="drawer-section-title" data-i18n="settings.connection">接続</div>
     <div class="field">
-      <label>エージェントURL</label>
+      <label data-i18n="setup.url">エージェントURL</label>
       <input id="drawerUrl" type="url" autocomplete="off">
     </div>
-    <div id="authStatusLine" style="font-size:12px;color:var(--muted);margin-top:2px;">認証状態を確認中…</div>
+    <div id="authStatusLine" style="font-size:12px;color:var(--muted);margin-top:2px;" data-i18n="settings.authChecking">認証状態を確認中…</div>
   </div>
 
   <div class="drawer-section">
     <div class="drawer-section-title">Claude Code</div>
     <div class="field">
-      <label>モデル（任意・空欄でデフォルト）</label>
+      <label data-i18n="settings.ccModelLabel">モデル（任意・空欄でデフォルト）</label>
       <select id="drawerCcModel">
-        <option value="">デフォルト（Opus 4.8・作業向け）</option>
-        <option value="haiku">Haiku（速い・上限消費少）</option>
-        <option value="sonnet">Sonnet（高精度・標準）</option>
-        <option value="opus">Opus 4.8（最強）</option>
+        <option value="" data-i18n="model.default">デフォルト（Opus 4.8・作業向け）</option>
+        <option value="haiku" data-i18n="model.haiku">Haiku（速い・上限消費少）</option>
+        <option value="sonnet" data-i18n="model.sonnet">Sonnet（高精度・標準）</option>
+        <option value="opus" data-i18n="model.opus">Opus 4.8（最強）</option>
       </select>
     </div>
     <div class="field">
-      <label>Claude Code 権限モード</label>
+      <label data-i18n="settings.permLabel">Claude Code 権限モード</label>
       <select id="drawerPermMode">
-        <option value="bypassPermissions">全部自動承認（おまかせ）</option>
-        <option value="acceptEdits">編集は自動・Bashは確認</option>
-        <option value="default">毎回確認（推奨されない）</option>
-        <option value="plan">プランのみ作成（実行しない）</option>
+        <option value="bypassPermissions" data-i18n="perm.bypass">全部自動承認（おまかせ）</option>
+        <option value="acceptEdits" data-i18n="perm.acceptEdits">編集は自動・Bashは確認</option>
+        <option value="default" data-i18n="perm.default">毎回確認（推奨されない）</option>
+        <option value="plan" data-i18n="perm.plan">プランのみ作成（実行しない）</option>
       </select>
     </div>
   </div>

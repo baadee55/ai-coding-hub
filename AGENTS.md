@@ -26,6 +26,11 @@ Cloudflare Tunnel. The relay/UI/auth/tunnel layer is engine-agnostic; the coding
 - Add a new engine **without code**: add an entry under `"engines"` in `config.json` (see
   `config.example.json`). It runs via `generic_cli` (raw text output). For rich output/resume, add a
   dedicated adapter like `claude_code.py`.
+- **UI language / i18n**: strings live in `ui/i18n.js` as `DICT.{ja,en}`. To localize the UI to another
+  language, add a new language block (e.g. `es`, `zh`) with the same keys and translated values, then
+  the 🌐 toggle / `navigator.language` picks it up. Tag any new visible HTML with `data-i18n="key"`
+  (or `-html`/`-ph`/`-title`). Remember the UI version triple-sync (`APP_VERSION` / `APP_JS_VERSION` /
+  `CACHE_KEY` + the `i18n.js?v=` query) when you change `ui/`.
 
 ## Verification status (be honest with the user)
 Verified only on **Android + Claude Code**. iPhone and other engines (Codex/Antigravity/Gemini) are
