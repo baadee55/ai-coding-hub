@@ -18,7 +18,7 @@
   <text x="80" y="220" fill="#c9d1d9" font-size="40" font-weight="600">Run Claude Code on your PC — from your phone</text>
 
   <!-- Bullets -->
-  <text x="80" y="310" fill="#7ee787" font-size="30" font-weight="600">✓  Your own Max / Pro plan — no API bill</text>
+  <text x="80" y="310" fill="#7ee787" font-size="30" font-weight="600">✓  Your own Claude plan (Pro/Max) — no API bill</text>
   <text x="80" y="362" fill="#7ee787" font-size="30" font-weight="600">✓  No open ports  (Cloudflare Tunnel)</text>
   <text x="80" y="414" fill="#7ee787" font-size="30" font-weight="600">✓  Self-hosted &amp; open source (MIT)</text>
 

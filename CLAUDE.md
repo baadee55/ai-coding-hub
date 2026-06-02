@@ -9,7 +9,7 @@
   ↓ IDE を選ぶ（Cursor / VS Code）
   ↓ プロジェクト一覧から選ぶ
   ↓ 自然言語で指示
-  ↓ PC側の Claude Code（Maxプラン枠）が実行
+  ↓ PC側の Claude Code（Claude 有料プラン枠: Pro/Max）が実行
   ↓ 結果を人間語で返す
 ```
 
@@ -26,7 +26,7 @@ watchdog（127.0.0.1:8765）  ← agent/watchdog.py
     ↓ Passkey / JWT / AGENT_TOKEN 認証
 FastAPI 中継AI（127.0.0.1:8766）  ← agent/main.py
     ↓ サブプロセス起動
-Claude Code CLI（Max プラン枠、追加課金なし、既定 Opus 4.8）
+Claude Code CLI（Claude 有料プラン枠: Pro/Max、追加課金なし、既定 Opus 4.8）
     ↓ tool 呼び出し
 PC のファイル・ターミナル
 ```
