@@ -111,4 +111,4 @@ OSS です。各自が自分の Claude アカ・自分のPCで動かすため、
 設定は [.github/FUNDING.yml](.github/FUNDING.yml)。
 
 ## License
-MIT（予定）。`ANTHROPIC_API_KEY` 課金・任意コマンド実行のリスクは利用者の自己責任です。
+[MIT](LICENSE)。`ANTHROPIC_API_KEY` 課金・任意コマンド実行のリスクは利用者の自己責任です。
