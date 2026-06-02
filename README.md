@@ -107,15 +107,21 @@ Open `http://127.0.0.1:8765/ui/` **locally** to register your phone via Passkey 
 // agent/config.json （雛形は config.example.json）
 "default_engine": "claude_code",
 "engines": {
-  "gemini": { "cmd": "gemini", "args": ["-p", "{prompt}"], "prompt_via": "arg",  "strip_env": ["GEMINI_API_KEY"] },
-  "codex":  { "cmd": "codex",  "args": ["exec"],            "prompt_via": "stdin", "strip_env": ["OPENAI_API_KEY"] }
+  "gemini":      { "cmd": "gemini", "args": ["-p", "{prompt}"], "prompt_via": "arg",   "strip_env": ["GEMINI_API_KEY"] },
+  "codex":       { "cmd": "codex",  "args": ["exec"],            "prompt_via": "stdin", "strip_env": ["OPENAI_API_KEY"] },
+  "antigravity": { "cmd": "agy",    "args": ["-p", "{prompt}"], "prompt_via": "arg" }   // Google Antigravity CLI
 }
 ```
 `{prompt}`/`{cwd}` を置換、`prompt_via` で標準入力/引数を選択、`strip_env` でそのエンジンの
 **APIキー課金を回避**（＝Claude と同じ“サブスクで動かす・API課金ゼロ”の思想を各エンジンで踏襲）。
-Codex CLI（ChatGPT契約）・Gemini CLI（Googleアカウント）も同じく自分のサブスク枠で動かせます。
+**ヘッドレス実行できる AI コーディング CLI** なら載ります:
+- **Claude Code**（既定・専用アダプタ） / **Gemini CLI**（`gemini -p`） / **OpenAI Codex CLI**（`codex exec`） /
+  **Google Antigravity CLI**（`agy -p`、アカウント認証＝APIキー不要）
+- それぞれ**自分のサブスク枠**で動く（API課金ゼロ）
 
-> リッチ表示・resume が要るエンジンは専用アダプタ（`engines/claude_code.py` 相当）を1枚足せばOK。
+> ⚠️ Claude Code 以外の設定は**ひな形**です。各 CLI の正確な起動引数はバージョンで変わるので、
+> 導入時に手元の CLI で1度確認してください（リッチ表示・resume が要るなら専用アダプタを1枚足す）。
+> ※ IDE（Antigravity アプリ等）は別軸＝IDEトンネルで“ブラウザで開く”用途。エンジンは**ヘッドレスCLI**のみ。
 
 ## 🤖 自分の AI エージェントでカスタムするのが正解
 

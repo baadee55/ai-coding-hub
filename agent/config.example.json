@@ -12,7 +12,8 @@
   "_engines_comment": "（任意）Claude Code 以外の AI コーディング CLI を“コードを書かず設定だけ”で追加。default_engine を変えるか、/command の engine フィールドで都度指定。claude_code は専用アダプタ（リッチ表示・会話継続あり）。他は generic_cli で素テキスト出力。cmd は PATH 解決。{prompt}/{cwd} を置換。prompt_via: stdin|arg。strip_env でそのエンジンの APIキー課金を回避。",
   "default_engine": "claude_code",
   "engines": {
-    "gemini": { "cmd": "gemini", "args": ["-p", "{prompt}"], "prompt_via": "arg", "strip_env": ["GEMINI_API_KEY", "GOOGLE_API_KEY"] },
-    "codex":  { "cmd": "codex",  "args": ["exec"],            "prompt_via": "stdin", "strip_env": ["OPENAI_API_KEY"] }
+    "gemini":      { "cmd": "gemini", "args": ["-p", "{prompt}"], "prompt_via": "arg",   "strip_env": ["GEMINI_API_KEY", "GOOGLE_API_KEY"] },
+    "codex":       { "cmd": "codex",  "args": ["exec"],            "prompt_via": "stdin", "strip_env": ["OPENAI_API_KEY"] },
+    "antigravity": { "cmd": "agy",    "args": ["-p", "{prompt}"], "prompt_via": "arg" }
   }
 }
