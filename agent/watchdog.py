@@ -17,6 +17,16 @@ if not API_TOKEN or API_TOKEN in ("change-me-now", "changeme", "default", "test"
 AGENT_URL = "http://127.0.0.1:8766"
 START_SCRIPT = str(Path(__file__).parent.parent / "start-all.ps1")
 
+# 「インターネット越し（=ローカル特権を与えない）」を識別するヘッダ名。
+# Cloudflare Tunnel は cf-connecting-ip を必ず付ける（エッジで設定・偽装不可）。
+# ⚠️ 別のトンネル（ngrok / Tailscale Funnel / frp 等）を使うなら、そのトンネルが
+#    「必ず付ける」ヘッダ名にこれを設定すること。誤るとインターネット越しの
+#    リクエストが「真のローカル」扱いになり端末追加などの特権を奪われる重大な穴になる。
+# 判定に確信が持てないトンネルでは ASSUME_REMOTE=1 にしてフェイルセーフ（全proxyを
+# リモート扱い。端末追加は agent:8766 をPCから直接叩く）。
+REMOTE_MARKER_HEADER = os.getenv("REMOTE_MARKER_HEADER", "cf-connecting-ip").strip().lower()
+ASSUME_REMOTE = os.getenv("ASSUME_REMOTE", "").strip().lower() in ("1", "true", "yes")
+
 app = FastAPI(title="AI Hub Watchdog", docs_url=None, redoc_url=None)
 
 
@@ -103,16 +113,16 @@ async def proxy(path: str, request: Request):
     #
     # ただし「PC ローカルブラウザ→watchdog」も watchdog 経由ではあるが、
     # 端末追加(/auth/register/token)などのローカル特権が必要なため区別する。
-    # 区別方法: cloudflared が中継したリクエストには cf-connecting-ip が付く
-    # (CF エッジで設定され攻撃者が偽装不可)。watchdog は 127.0.0.1 でしか
-    # listen していないので、cf-connecting-ip が無い = ローカル直接接続。
-    is_via_cf = "cf-connecting-ip" in {k.lower() for k in request.headers.keys()}
+    # 区別方法: トンネルが中継したリクエストには REMOTE_MARKER_HEADER が付く
+    # (既定 cf-connecting-ip。CF エッジで設定され攻撃者が偽装不可)。watchdog は
+    # 127.0.0.1 でしか listen していないので、そのヘッダが無い = ローカル直接接続。
+    is_via_tunnel = REMOTE_MARKER_HEADER in {k.lower() for k in request.headers.keys()}
     # 攻撃者が偽装できないよう、入ってきた x-via-watchdog は剥がしてから付け直す
     headers = {
         k: v for k, v in request.headers.items()
         if k.lower() not in ("host", "content-length", "transfer-encoding", "x-via-watchdog")
     }
-    if is_via_cf:
+    if ASSUME_REMOTE or is_via_tunnel:
         headers["X-Via-Watchdog"] = "1"
     # ローカル直 (PC ブラウザから 127.0.0.1:8765) はヘッダを付けない →
     # agent は普通の 127.0.0.1 として扱う = ローカル特権あり
