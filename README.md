@@ -1,7 +1,7 @@
 # 📱 AI Coding Hub — スマホから自宅PCの Claude Code を動かす
 
 > Run **Claude Code** on your home PC, from your phone — **no API bill, no open ports.**
-> あなたの Claude **有料プラン（Pro / Max）**で動くので追加課金ゼロ。Cloudflare Tunnel 経由でポート開放も不要。
+> あなたの Claude **プラン**で動くので**API課金ゼロ**。Cloudflare Tunnel 経由でポート開放も不要。
 
 スマホでアプリを開く → IDE とプロジェクトを選ぶ → 自然言語で指示 → 自宅PCの Claude Code が実行 → 人間語で結果を返す。
 
@@ -13,7 +13,7 @@
 
 ### ⚠️ 1. `ANTHROPIC_API_KEY` を絶対に設定しないこと
 
-このシステムは Claude の **有料プラン（Pro / Max）枠**で動かす前提です。
+このシステムは Claude の **プラン枠**（サブスク）で動かす前提です。
 環境変数や `.env` に `ANTHROPIC_API_KEY` があると、Claude Code が **API 従量課金**で動き、
 **想定外の高額請求**が来ます（[Issue #37686](https://github.com/anthropics/claude-code/issues/37686): 2日で **$1,800** の事例）。
 
@@ -75,7 +75,7 @@ cd ai-coding-hub
 ## English
 
 **AI Coding Hub** lets you operate **Claude Code on your home PC from your phone**, running on
-your **own Claude plan (Pro or Max)** (no API billing) over a **Cloudflare Tunnel** (no port forwarding).
+your **own Claude plan** (no API billing) over a **Cloudflare Tunnel** (no port forwarding).
 
 > ⚠️ **Never set `ANTHROPIC_API_KEY`** — it switches Claude Code to metered API billing
 > (a user reported **$1,800 in 2 days**). The agent **refuses to start** if the key is present.
