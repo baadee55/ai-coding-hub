@@ -1,0 +1,21 @@
+{
+  "name": "AI hub β",
+  "short_name": "AI hub β",
+  "description": "PCのAI作業の続きをスマホから",
+  "start_url": "/ui/",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#0f0f1a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/ui/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["productivity", "developer"],
+  "lang": "ja"
+}

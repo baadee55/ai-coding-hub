@@ -1,0 +1,11 @@
+{
+  "_comment": "登録プロジェクトの雛形。初回 setup.ps1 がこれを config.json にコピーします。config.json は .gitignore 済み（個人のパスを公開しないため）。スマホUIの『＋プロジェクト追加』から増やせます。",
+  "projects": [
+    {
+      "id": "example01",
+      "name": "sample-project",
+      "path": "C:\\path\\to\\your\\project",
+      "description": "ここに自分のプロジェクトの絶対パスを入れる（このプロジェクト配下でのみ Claude が動く安全柵）"
+    }
+  ]
+}

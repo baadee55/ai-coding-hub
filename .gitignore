@@ -1,0 +1,20 @@
+# 環境・依存
+.env
+__pycache__/
+.venv/
+*.pyc
+
+# 秘密情報（絶対にコミットしない）
+agent/config/
+agent/config.json
+*.jwt
+passkey-qr-*.png
+# QR 画像は登録トークン入りURLをエンコードしている＝公開厳禁
+*-qr.png
+ui/*-qr.png
+
+# 大きいバイナリ（各自ダウンロード。tunnel-setup/README.md 参照）
+tunnel-setup/*.exe
+
+# 実行時ログ・PID（マシン固有・ノイズ）
+logs/

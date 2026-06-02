@@ -1,0 +1,8 @@
+# GitHub の「Sponsor」ボタンを出す設定。
+# 自分のアカウントを設定したら有効化される（プレースホルダのままだと無効）。
+# GitHub Sponsors はネイティブ決済対応（GitHub上で課金できる）。
+github: [your-github-username]      # 例: github: baadee55
+# 他サービスも追加可能（不要なら行ごと削除）
+ko_fi:            # 例: your_kofi_name
+buy_me_a_coffee:  # 例: your_bmac_name
+custom: []        # 例: ["https://www.paypal.me/yourname"]
