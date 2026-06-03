@@ -5,6 +5,31 @@
 # 一時的にどうしても回避したい時のみ: git push --no-verify （非推奨・自己責任）
 # =========================================================================
 root="$(git rev-parse --show-toplevel)"
+remote_url="$2"
+
+# --- アカウント/リポ取り違えガード ---------------------------------------
+# このリポは baadee55/ai-coding-hub（公開）/ cnpstorys/ai-coding-hub（private予備）専用。
+# 別アカ・別プロジェクトの repo へ誤 push するのを防ぐ。
+case "$remote_url" in
+  *ai-coding-hub*) : ;;  # OK（baadee55 or cnpstorys の ai-coding-hub）
+  *)
+    echo "[BLOCKED] push 先が ai-coding-hub ではありません: $remote_url" >&2
+    echo "          アカウント/リポ取り違えの可能性。git remote -v を確認してください。" >&2
+    exit 1 ;;
+esac
+# baadee55（公開）へ出すなら作者は baadee55 名義であること。
+case "$remote_url" in
+  *baadee55/ai-coding-hub*)
+    email="$(git config user.email)"
+    case "$email" in
+      *baadee55@users.noreply.github.com) : ;;
+      *)
+        echo "[BLOCKED] 公開先へ baadee55 以外の名義で push しようとしています: $email" >&2
+        echo "          git config user.email を baadee55 の noreply に設定してください。" >&2
+        exit 1 ;;
+    esac ;;
+esac
+
 py="$(command -v python 2>/dev/null || command -v python3 2>/dev/null)"
 if [ -z "$py" ]; then
   echo "pre-push: python not found -> aborting push for safety." >&2
