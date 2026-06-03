@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "53";
+window.APP_JS_VERSION = "54";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -283,15 +283,15 @@ function renderWelcome() {
   w.id = "welcomeScreen";
   w.innerHTML = `
     <div class="welcome-icon">🤖</div>
-    <div class="welcome-title">PCに接続しました</div>
-    <div class="welcome-desc">テキストで指示するだけでAIがPCを操作します。<br>コードの修正・ファイル操作・コマンド実行など何でも。</div>
+    <div class="welcome-title">${t("welcome.title")}</div>
+    <div class="welcome-desc">${t("welcome.desc")}</div>
     <div class="welcome-hints">
-      <div class="welcome-hint"><span class="welcome-hint-icon">⬡</span><span>Git バーの <b>⬡ VS Code</b> ボタンで、選んだプロジェクトをブラウザのVS Codeで開ける</span></div>
-      <div class="welcome-hint"><span class="welcome-hint-icon">↓</span><span><b>Git Pull/Commit/Push</b> ボタンで素早くgit操作</span></div>
-      <div class="welcome-hint"><span class="welcome-hint-icon">⭐</span><span>よく使う指示は<b>お気に入り</b>に登録してワンタップ送信</span></div>
-      <div class="welcome-hint"><span class="welcome-hint-icon">🕘</span><span>入力欄の<b>🕘</b>ボタンで過去に送った指示を呼び出せる（タップで再利用）</span></div>
+      <div class="welcome-hint"><span class="welcome-hint-icon">⬡</span><span>${t("welcome.hint1")}</span></div>
+      <div class="welcome-hint"><span class="welcome-hint-icon">↓</span><span>${t("welcome.hint2")}</span></div>
+      <div class="welcome-hint"><span class="welcome-hint-icon">⭐</span><span>${t("welcome.hint3")}</span></div>
+      <div class="welcome-hint"><span class="welcome-hint-icon">🕘</span><span>${t("welcome.hint4")}</span></div>
     </div>
-    <button onclick="document.getElementById('helpBtn').click()" style="background:none;border:1px solid var(--border);border-radius:20px;padding:8px 18px;font-size:13px;color:var(--accent);cursor:pointer;">❓ 使い方をすべて見る</button>`;
+    <button onclick="document.getElementById('helpBtn').click()" style="background:none;border:1px solid var(--border);border-radius:20px;padding:8px 18px;font-size:13px;color:var(--accent);cursor:pointer;">${t("welcome.seeAll")}</button>`;
   $messages.appendChild(w);
 }
 function removeWelcome() {
@@ -849,7 +849,7 @@ function renderFavs() {
   if (!_favs.length) {
     const hint = document.createElement("div");
     hint.style.cssText = "font-size:12px;color:var(--muted);padding:2px 0;";
-    hint.textContent = "よく使う指示を登録できます。";
+    hint.textContent = t("fav.hint");
     $p.appendChild(hint);
   }
   _favs.forEach((f, i) => {

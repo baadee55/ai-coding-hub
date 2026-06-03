@@ -13,7 +13,7 @@
   <title>AI hub β</title>
   <!-- アプリ版数。UIを変えたらここを上げる。app.js?v / sw.js?v が新URLになり
        Cloudflareのエッジキャッシュを貫通して最新が届く。index.html自体は no-store。 -->
-  <script>window.APP_VERSION = "53";</script>
+  <script>window.APP_VERSION = "54";</script>
   <link rel="manifest" href="/ui/manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
@@ -23,7 +23,7 @@
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <!-- 軽量 i18n（EN/JA 切替）。?v は APP_VERSION と揃える（三点同期の対象に準じる） -->
-  <script src="/ui/i18n.js?v=53"></script>
+  <script src="/ui/i18n.js?v=54"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
@@ -544,45 +544,45 @@
   </div>
 
   <div class="drawer-section">
-    <div class="drawer-section-title">VS Code トンネル</div>
+    <div class="drawer-section-title" data-i18n="settings.vscodeTunnel">VS Code トンネル</div>
     <div class="field">
-      <label>トンネル名（start-all.ps1 の --name と合わせる）</label>
+      <label data-i18n="settings.tunnelNameLabel">トンネル名（start-all.ps1 の --name と合わせる）</label>
       <input id="drawerVscodeName" type="text" placeholder="aihub-pc" autocomplete="off">
     </div>
   </div>
 
   <div class="drawer-section">
-    <div class="drawer-section-title">スマホ認証（Passkey）</div>
-    <div id="passkeyStatus" style="font-size:12px;color:var(--muted);">確認中…</div>
-    <button class="drawer-btn"  id="passkeyLoginBtn"  style="display:none;">🔓 Passkey でログイン</button>
-    <button class="drawer-btn"  id="passkeyRegisterPcBtn" style="display:none;">📱 この端末を Passkey 登録（QR 経由）</button>
-    <button class="drawer-btn"  id="passkeyAddBtn"    style="display:none;">📱 別の端末を追加（PC で実行 → QR）</button>
+    <div class="drawer-section-title" data-i18n="settings.passkey">スマホ認証（Passkey）</div>
+    <div id="passkeyStatus" style="font-size:12px;color:var(--muted);" data-i18n="passkey.checking">確認中…</div>
+    <button class="drawer-btn"  id="passkeyLoginBtn"  style="display:none;" data-i18n="passkey.login">🔓 Passkey でログイン</button>
+    <button class="drawer-btn"  id="passkeyRegisterPcBtn" style="display:none;" data-i18n="passkey.registerPc">📱 この端末を Passkey 登録（QR 経由）</button>
+    <button class="drawer-btn"  id="passkeyAddBtn"    style="display:none;" data-i18n="passkey.add">📱 別の端末を追加（PC で実行 → QR）</button>
     <div id="passkeyDevices" style="display:flex;flex-direction:column;gap:6px;"></div>
   </div>
 
   <div class="drawer-section">
-    <button class="drawer-save" id="drawerSave">保存</button>
-    <button class="drawer-btn"  id="installAppBtn">📲 ホーム画面にアプリを追加</button>
+    <button class="drawer-save" id="drawerSave" data-i18n="drawer.save">保存</button>
+    <button class="drawer-btn"  id="installAppBtn" data-i18n="drawer.install">📲 ホーム画面にアプリを追加</button>
   </div>
 
   <div class="drawer-section">
-    <div class="drawer-section-title">操作</div>
-    <button class="drawer-warn"   id="restartBtn">🔄 エージェントを再起動</button>
-    <button class="drawer-danger" id="clearHistoryBtn">🗑️ 会話履歴を削除</button>
-    <button class="drawer-danger" id="shutdownBtn" style="opacity:0.7;">⏹ エージェントを完全停止</button>
+    <div class="drawer-section-title" data-i18n="settings.actions">操作</div>
+    <button class="drawer-warn"   id="restartBtn" data-i18n="action.restart">🔄 エージェントを再起動</button>
+    <button class="drawer-danger" id="clearHistoryBtn" data-i18n="action.clearHistory">🗑️ 会話履歴を削除</button>
+    <button class="drawer-danger" id="shutdownBtn" style="opacity:0.7;" data-i18n="action.shutdown">⏹ エージェントを完全停止</button>
   </div>
 </div>
 
 <!-- プロジェクト追加 -->
 <div class="drawer-overlay" id="projectOverlay"></div>
 <div id="addProjectDrawer">
-  <h3>＋ プロジェクト追加</h3>
-  <p>フォルダのパスを指定してプロジェクトを登録します。</p>
-  <input id="projName" placeholder="プロジェクト名（例: myapp）">
-  <input id="projPath" placeholder="フォルダパス（例: E:\myapp）">
+  <h3 data-i18n="addProj.title">＋ プロジェクト追加</h3>
+  <p data-i18n="addProj.desc">フォルダのパスを指定してプロジェクトを登録します。</p>
+  <input id="projName" placeholder="プロジェクト名（例: myapp）" data-i18n-ph="addProj.namePh">
+  <input id="projPath" placeholder="フォルダパス（例: E:\myapp）" data-i18n-ph="addProj.pathPh">
   <div class="row2">
-    <button class="btn-cancel" id="projCancel">キャンセル</button>
-    <button class="btn-add"    id="projSave">追加</button>
+    <button class="btn-cancel" id="projCancel" data-i18n="btn.cancel">キャンセル</button>
+    <button class="btn-add"    id="projSave" data-i18n="btn.add">追加</button>
   </div>
 </div>
 
@@ -590,7 +590,7 @@
 <div class="drawer-overlay" id="fileTreeOverlay"></div>
 <div id="fileTreeDrawer">
   <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h3>📂 <span id="fileTreeTitle">ファイル</span></h3>
+    <h3>📂 <span id="fileTreeTitle" data-i18n="fileTree.title">ファイル</span></h3>
     <button class="icon-btn" id="fileTreeClose">✕</button>
   </div>
   <div id="fileTreeContent" style="display:flex;flex-direction:column;gap:6px;"></div>
@@ -600,10 +600,10 @@
 <div class="drawer-overlay" id="jobsOverlay"></div>
 <div id="jobsDrawer" style="position:fixed;bottom:-100%;left:0;right:0;background:var(--card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;transition:bottom .25s ease;z-index:100;max-height:75dvh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
   <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h3 style="font-size:16px;font-weight:700;">🗂 ジョブ履歴（このプロジェクト）</h3>
+    <h3 style="font-size:16px;font-weight:700;" data-i18n="jobs.title">🗂 ジョブ履歴（このプロジェクト）</h3>
     <button class="icon-btn" id="jobsClose">✕</button>
   </div>
-  <p style="font-size:12px;color:var(--muted);">実行中・完了したジョブを再表示できます。タップで会話に復元。</p>
+  <p style="font-size:12px;color:var(--muted);" data-i18n="jobs.desc">実行中・完了したジョブを再表示できます。タップで会話に復元。</p>
   <div id="jobsList" style="display:flex;flex-direction:column;gap:8px;"></div>
 </div>
 
@@ -611,18 +611,18 @@
 <div class="drawer-overlay" id="procsOverlay"></div>
 <div id="procsDrawer" style="position:fixed;bottom:-100%;left:0;right:0;background:var(--card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;transition:bottom .25s ease;z-index:100;max-height:80dvh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
   <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h3 style="font-size:16px;font-weight:700;">🚀 プロセス（dev server 等）</h3>
+    <h3 style="font-size:16px;font-weight:700;" data-i18n="procs.title">🚀 プロセス（dev server 等）</h3>
     <button class="icon-btn" id="procsClose">✕</button>
   </div>
   <div style="display:flex;gap:6px;">
-    <input id="procCmd" placeholder='例: npm run dev / pytest -q' style="flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px;font-family:monospace;">
-    <button class="btn-sm" id="procRunBtn" style="padding:8px 14px;background:var(--accent);color:white;border:none;">▶ 起動</button>
+    <input id="procCmd" placeholder='例: npm run dev / pytest -q' data-i18n-ph="procs.cmdPh" style="flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px;font-family:monospace;">
+    <button class="btn-sm" id="procRunBtn" data-i18n="procs.run" style="padding:8px 14px;background:var(--accent);color:white;border:none;">▶ 起動</button>
   </div>
   <div id="procsList" style="display:flex;flex-direction:column;gap:8px;"></div>
   <div id="procTail" style="display:none;flex-direction:column;gap:6px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <div id="procTailTitle" style="font-size:13px;color:var(--muted);font-family:monospace;"></div>
-      <button class="btn-sm" id="procTailClose">閉じる</button>
+      <button class="btn-sm" id="procTailClose" data-i18n="procs.tailClose">閉じる</button>
     </div>
     <pre id="procTailContent" style="background:#000;color:#0f0;padding:10px;border-radius:8px;font-size:11px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
   </div>
@@ -632,24 +632,24 @@
 <div class="drawer-overlay" id="idePickerOverlay"></div>
 <div id="idePickerDrawer" style="position:fixed;bottom:-100%;left:0;right:0;background:var(--card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;transition:bottom .25s ease;z-index:100;max-height:75dvh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
   <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h3 id="idePickerTitle" style="font-size:16px;font-weight:700;">プロジェクトを選択</h3>
+    <h3 id="idePickerTitle" style="font-size:16px;font-weight:700;" data-i18n="idePicker.title">プロジェクトを選択</h3>
     <button class="icon-btn" id="idePickerClose">✕</button>
   </div>
-  <p style="font-size:12px;color:var(--muted);">タップでそのプロジェクトをIDEで開いて、AIへの指示画面もスコープを切り替えます。</p>
+  <p style="font-size:12px;color:var(--muted);" data-i18n="idePicker.desc">タップでそのプロジェクトをIDEで開いて、AIへの指示画面もスコープを切り替えます。</p>
   <div id="idePickerList" style="display:flex;flex-direction:column;gap:8px;"></div>
 </div>
 
 <!-- 端末追加 QR モーダル -->
 <div id="qrModal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:24px;">
   <div style="background:var(--card);border-radius:20px;padding:24px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px;">
-    <div style="font-size:18px;font-weight:700;text-align:center;">📱 別の端末で開いて登録</div>
-    <p style="font-size:13px;color:var(--muted);line-height:1.6;text-align:center;">
+    <div style="font-size:18px;font-weight:700;text-align:center;" data-i18n="qr.title">📱 別の端末で開いて登録</div>
+    <p style="font-size:13px;color:var(--muted);line-height:1.6;text-align:center;" data-i18n-html="qr.desc">
       スマホで下の QR をスキャン → ブラウザで開く → そのまま Passkey 登録に進みます。<br>
       <b style="color:var(--yellow);">10 分以内に</b> 完了してください。
     </p>
     <div id="qrImg" style="background:white;padding:16px;border-radius:14px;display:flex;align-items:center;justify-content:center;"></div>
     <div id="qrUrl" style="font-size:11px;color:var(--muted);font-family:monospace;word-break:break-all;text-align:center;background:var(--bg);padding:8px;border-radius:8px;"></div>
-    <button onclick="document.getElementById('qrModal').style.display='none'" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;cursor:pointer;">閉じる</button>
+    <button onclick="document.getElementById('qrModal').style.display='none'" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;cursor:pointer;" data-i18n="common.close">閉じる</button>
   </div>
 </div>
 
@@ -706,28 +706,28 @@
 <!-- インストールモーダル -->
 <div id="installModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border-radius:20px 20px 0 0;padding:28px 24px 36px;width:100%;max-width:480px;">
-    <div style="font-size:18px;font-weight:700;margin-bottom:16px;">📲 ホーム画面に追加</div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:16px;" data-i18n="install.title">📲 ホーム画面に追加</div>
     <div id="installAndroid" style="display:none;">
-      <div style="font-size:14px;color:var(--muted);line-height:1.8;">
+      <div style="font-size:14px;color:var(--muted);line-height:1.8;" data-i18n-html="install.android">
         ① 右上「⋮」メニューをタップ<br>
         ② <b style="color:var(--text);">「ホーム画面に追加」</b> をタップ<br>
         ③ 「追加」で完了
       </div>
-      <button id="installPromptBtn" style="display:none;margin-top:16px;width:100%;background:var(--accent);color:white;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;">インストール</button>
+      <button id="installPromptBtn" style="display:none;margin-top:16px;width:100%;background:var(--accent);color:white;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;" data-i18n="install.installBtn">インストール</button>
     </div>
     <div id="installIos" style="display:none;">
-      <div style="font-size:14px;color:var(--muted);line-height:1.8;">
+      <div style="font-size:14px;color:var(--muted);line-height:1.8;" data-i18n-html="install.ios">
         ① 下部の <b style="color:var(--text);">「共有」ボタン（□↑）</b> をタップ<br>
         ② <b style="color:var(--text);">「ホーム画面に追加」</b> をタップ<br>
         ③ 「追加」で完了
       </div>
     </div>
     <div id="installDone" style="display:none;">
-      <div style="font-size:14px;color:var(--green);line-height:1.8;">
+      <div style="font-size:14px;color:var(--green);line-height:1.8;" data-i18n-html="install.done">
         ✅ すでにアプリとしてインストール済みです。
       </div>
     </div>
-    <button onclick="closeInstallModal()" style="margin-top:20px;width:100%;background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;cursor:pointer;">閉じる</button>
+    <button onclick="closeInstallModal()" style="margin-top:20px;width:100%;background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;cursor:pointer;" data-i18n="common.close">閉じる</button>
   </div>
 </div>
 
