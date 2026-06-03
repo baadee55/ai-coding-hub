@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "54";
+window.APP_JS_VERSION = "55";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -544,7 +544,7 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
     const nextAttempt = gotAny ? 0 : attempt + 1;
     if (nextAttempt > MAX_ATTEMPTS) {
       setConnBar(null);
-      addMsg("error", "接続が回復しませんでした。指示はPCで継続中の可能性があります（🗂ジョブ履歴から再表示できます）。");
+      addMsg("error", t("conn.notRecovered"));
       finish();
       return;
     }
@@ -1063,14 +1063,14 @@ function updateAuthStatusLine() {
     try {
       const p = JSON.parse(atob(jwt.split(".")[1]));
       const left = Math.max(0, p.exp - Math.floor(Date.now()/1000));
-      el.innerHTML = `<span style="color:var(--green);">✅ Passkey で認証済み</span>（${escapeHtml(p.name||"この端末")}・残り ${Math.floor(left/86400)}日）`;
+      el.innerHTML = t("pk.authed", {name: escapeHtml(p.name||t("common.thisDevice")), days: Math.floor(left/86400)});
     } catch {
-      el.innerHTML = `<span style="color:var(--green);">✅ Passkey で認証済み</span>`;
+      el.innerHTML = t("pk.authedShort");
     }
   } else if (getSettings().token) {
-    el.innerHTML = `<span style="color:var(--yellow);">🔑 トークンで接続中</span>（Passkey 未登録）`;
+    el.innerHTML = t("pk.tokenMode");
   } else {
-    el.innerHTML = `<span style="color:var(--muted);">未認証（下の Passkey セクションから設定）</span>`;
+    el.innerHTML = t("pk.unauthed");
   }
 }
 function closeDrawer() {
@@ -1096,11 +1096,11 @@ document.getElementById("drawerSave").onclick = async () => {
 
 // ===== 再起動 =====
 document.getElementById("restartBtn").onclick = async () => {
-  if (!confirm("エージェントを再起動します。\n約10秒間接続が切れます。")) return;
+  if (!confirm(t("confirm.restart"))) return;
   closeDrawer();
   try {
     await api("/restart", "POST");
-    addMsg("system", "🔄 再起動中… 自動で再接続します");
+    addMsg("system", t("restart.inProgress"));
     $statusDot.className = "status-dot"; $statusDot.style.background = "var(--yellow)"; $statusText.textContent = t("status.restarting");
     let tries = 0;
     const poll = setInterval(async () => {
@@ -1108,8 +1108,8 @@ document.getElementById("restartBtn").onclick = async () => {
       const ok = await checkHealth();
       if (ok === true || tries >= 12) {
         clearInterval(poll);
-        if (ok === true) { addMsg("system", "✅ 再起動完了"); await loadProjects(); }
-        else addMsg("error", "再起動に失敗しました。PCを確認してください");
+        if (ok === true) { addMsg("system", t("restart.done")); await loadProjects(); }
+        else addMsg("error", t("restart.failed"));
       }
     }, 3000);
   } catch(e) { addMsg("error", e.message); }
@@ -1117,18 +1117,18 @@ document.getElementById("restartBtn").onclick = async () => {
 
 // ===== 履歴クリア =====
 document.getElementById("clearHistoryBtn").onclick = () => {
-  if (!confirm("会話履歴を削除しますか？")) return;
+  if (!confirm(t("confirm.clearHistory"))) return;
   $messages.innerHTML = ""; renderWelcome();
   const key = "conv_" + (selectedProject?.id || "default");
   localStorage.removeItem(key);
-  showToast("履歴を削除しました"); closeDrawer();
+  showToast(t("history.cleared")); closeDrawer();
 };
 
 // ===== シャットダウン =====
 document.getElementById("shutdownBtn").onclick = async () => {
-  if (!confirm("エージェントを完全停止します。\n再起動はPCで「AI hub β」を起動し直してください。")) return;
+  if (!confirm(t("confirm.shutdown"))) return;
   try { await api("/shutdown", "POST"); } catch {}
-  addMsg("system", "エージェントを停止しました");
+  addMsg("system", t("shutdown.done"));
   $statusDot.className = "status-dot off"; $statusDot.style.background = ""; $statusText.textContent = t("status.stopped");
   closeDrawer();
 };
@@ -1653,7 +1653,7 @@ async function passkeyRefreshUI() {
     } else if (valid) {
       const p = JSON.parse(atob(jwt.split(".")[1]));
       const left = Math.max(0, p.exp - Math.floor(Date.now()/1000));
-      $st.innerHTML = `<span style="color:var(--green);">✅ ログイン中: ${escapeHtml(p.name||"?")} (残り ${Math.floor(left/86400)}日)</span>`;
+      $st.innerHTML = t("pk.loggedIn", {name: escapeHtml(p.name||"?"), days: Math.floor(left/86400)});
       $login.style.display = "none";
       $regPc.style.display = "none";
       $add.style.display = "";
@@ -1663,11 +1663,11 @@ async function passkeyRefreshUI() {
         $devs.innerHTML = devs.map(d => `
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:13px;">📱 ${escapeHtml(d.name)} <span style="color:var(--muted);font-size:11px;">${d.id}</span></span>
-            <button onclick="deleteDevice('${d.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;">削除</button>
+            <button onclick="deleteDevice('${d.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;">${t("common.delete")}</button>
           </div>`).join("");
       } catch {}
     } else {
-      $st.innerHTML = "Passkey 登録済み・未ログイン。下のボタンで認証してください。";
+      $st.innerHTML = t("pk.registeredNotLoggedIn");
       $login.style.display = "";
       $regPc.style.display = "none";
       $add.style.display = "";
@@ -1679,8 +1679,8 @@ async function passkeyRefreshUI() {
 }
 
 async function deleteDevice(shortId) {
-  if (!confirm(`デバイス ${shortId} を削除しますか？このデバイスからは再ログインできなくなります。`)) return;
-  try { await api(`/auth/devices/${shortId}`, "DELETE"); showToast("削除しました"); passkeyRefreshUI(); }
+  if (!confirm(t("confirm.deleteDevice", {id: shortId}))) return;
+  try { await api(`/auth/devices/${shortId}`, "DELETE"); showToast(t("common.deleted")); passkeyRefreshUI(); }
   catch (e) { addMsg("error", e.message); }
 }
 

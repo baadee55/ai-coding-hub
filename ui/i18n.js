@@ -86,6 +86,30 @@
       "welcome.hint4": "入力欄の<b>🕘</b>ボタンで過去に送った指示を呼び出せる（タップで再利用）",
       "welcome.seeAll": "❓ 使い方をすべて見る",
       "fav.hint": "よく使う指示を登録できます。",
+      "confirm.restart": "エージェントを再起動します。\n約10秒間接続が切れます。",
+      "confirm.clearHistory": "会話履歴を削除しますか？",
+      "confirm.shutdown": "エージェントを完全停止します。\n再起動はPCで「AI hub β」を起動し直してください。",
+      "confirm.deleteDevice": "デバイス {id} を削除しますか？このデバイスからは再ログインできなくなります。",
+      "pk.authed": "<span style=\"color:var(--green);\">✅ Passkey で認証済み</span>（{name}・残り {days}日）",
+      "pk.tokenMode": "<span style=\"color:var(--yellow);\">🔑 トークンで接続中</span>（Passkey 未登録）",
+      "pk.loggedIn": "<span style=\"color:var(--green);\">✅ ログイン中: {name} (残り {days}日)</span>",
+      "pk.registeredNotLoggedIn": "Passkey 登録済み・未ログイン。下のボタンで認証してください。",
+      "pk.authDialog": "認証ダイアログを表示中…",
+      "pk.regDone": "✅ Passkey 登録完了",
+      "pk.regFail": "Passkey 登録失敗: {msg}",
+      "pk.regTitle": "この端末を Passkey 登録",
+      "pk.regBtn": "🔓 Passkey 登録する",
+      "conn.notRecovered": "接続が回復しませんでした。指示はPCで継続中の可能性があります（🗂ジョブ履歴から再表示できます）。",
+      "common.thisDevice": "この端末",
+      "restart.inProgress": "🔄 再起動中… 自動で再接続します",
+      "restart.done": "✅ 再起動完了",
+      "restart.failed": "再起動に失敗しました。PCを確認してください",
+      "history.cleared": "履歴を削除しました",
+      "shutdown.done": "エージェントを停止しました",
+      "pk.authedShort": "<span style=\"color:var(--green);\">✅ Passkey で認証済み</span>",
+      "pk.unauthed": "<span style=\"color:var(--muted);\">未認証（下の Passkey セクションから設定）</span>",
+      "common.delete": "削除",
+      "common.deleted": "削除しました",
     },
     en: {
       "header.sub": "Your PC's AI — from your phone",
@@ -162,6 +186,31 @@
       "welcome.hint4": "Recall past instructions with the <b>🕘</b> button in the input (tap to reuse)",
       "welcome.seeAll": "❓ See the full guide",
       "fav.hint": "You can save frequently used instructions.",
+      "confirm.restart": "Restart the agent?\nThe connection will drop for about 10 seconds.",
+      "confirm.clearHistory": "Delete the conversation history?",
+      "confirm.shutdown": "Stop the agent completely?\nTo restart, launch “AI hub β” again on your PC.",
+      "confirm.deleteDevice": "Delete device {id}? You will not be able to sign in again from this device.",
+      "pk.authed": "<span style=\"color:var(--green);\">✅ Authenticated with Passkey</span> ({name} · {days}d left)",
+      "pk.tokenMode": "<span style=\"color:var(--yellow);\">🔑 Connected with token</span> (Passkey not registered)",
+      "pk.loggedIn": "<span style=\"color:var(--green);\">✅ Signed in: {name} ({days}d left)</span>",
+      "pk.registeredNotLoggedIn": "Passkey registered but not signed in. Tap the button below to authenticate.",
+      "pk.authDialog": "Showing the authentication dialog…",
+      "pk.regDone": "✅ Passkey registered",
+      "pk.regFail": "Passkey registration failed: {msg}",
+      "pk.regTitle": "Register this device with Passkey",
+      "pk.regBtn": "🔓 Register Passkey",
+      "conn.notRecovered": "Could not recover the connection. Your instruction may still be running on the PC (re-open it from 🗂 Job history).",
+      "common.thisDevice": "this device",
+      "restart.inProgress": "🔄 Restarting… it will reconnect automatically",
+      "restart.done": "✅ Restart complete",
+      "restart.failed": "Restart failed. Please check your PC.",
+      "history.cleared": "History cleared",
+      "shutdown.done": "Agent stopped",
+      "pk.authedShort": "<span style=\"color:var(--green);\">✅ Authenticated with Passkey</span>",
+      "pk.unauthed": "<span style=\"color:var(--muted);\">Not authenticated (set up in the Passkey section below)</span>",
+      "common.delete": "Delete",
+      "common.deleted": "Deleted",
+      "help.body": '<div class="help-title">❓ Guide / button reference</div><div class="help-lead">Just type an instruction and the AI on your PC (Claude Code, by default) edits files, runs commands, and more. Here is what each button does.</div><h4>Header (top row)</h4><div class="help-row"><span class="help-key">🔄</span><span><b>Update app</b>. Pull the latest UI (if it looks out of date).</span></div><div class="help-row"><span class="help-key">❓</span><span>Open <b>this help</b>.</span></div><div class="help-row"><span class="help-key">⚙️</span><span><b>Settings</b>: agent URL, model, permissions, Passkey, restart agent, etc.</span></div><div class="help-row"><span class="help-key">●</span><span>Connection status (running / disconnected).</span></div><h4>VS Code in the Git bar</h4><div class="help-row"><span class="help-key">⬡</span><span><b>VS Code</b>. Open the selected project in browser VS Code (vscode.dev) — handy on a tablet or big screen.</span></div><h4>Project row</h4><div class="help-row"><span class="help-key">▾</span><span><b>Project select</b>. Switch the target folder for instructions (swipe left/right too).</span></div><div class="help-row"><span class="help-key">🆕</span><span><b>New conversation</b>. Cut the prior context and start fresh (when topics get mixed).</span></div><div class="help-row"><span class="help-key">🗂</span><span><b>Job history</b>. List of running/finished instructions. Tap to restore into the chat.</span></div><div class="help-row"><span class="help-key">🚀</span><span><b>Process manager</b>. Start long-running things like <code>npm run dev</code> or <code>pytest</code> and view logs.</span></div><div class="help-row"><span class="help-key">📋</span><span><b>Status explainer</b>. The AI explains git changes in plain language.</span></div><div class="help-row"><span class="help-key">📅</span><span><b>Daily summary</b>. The AI reports the work done today.</span></div><div class="help-row"><span class="help-key">📂</span><span><b>File list</b>. Browse inside the project and check contents.</span></div><div class="help-row"><span class="help-key">＋</span><span><b>Add project</b>. Register a folder path.</span></div><h4>Git operations (save &amp; share changes)</h4><div class="help-lead" style="margin:6px 0 10px;">Git records the history of your work and saves/shares it online (e.g. GitHub). The buttons below act on the selected project. Even without knowing the jargon, pressing them in the order below works.</div><div class="help-row"><span class="help-key">↓</span><span><b>Pull (fetch)</b>. Bring the latest from online to your machine. Press it <b>before starting</b> to pick up changes made on another PC.</span></div><div class="help-row"><span class="help-key">≡</span><span><b>Status (check)</b>. See which files you changed, as a list. For "what did I touch?".</span></div><div class="help-row"><span class="help-key">✓</span><span><b>Commit (save)</b>. Give the changes a message and <b>record them in local history</b>. A message prompt appears. Think of it as a save point. <u>All changes are recorded together.</u></span></div><div class="help-row"><span class="help-key">↑</span><span><b>Push (send)</b>. Send committed changes <b>online (e.g. GitHub) to share / back up</b>. <u>Commit alone does not reach the cloud — Push is required at the end.</u></span></div><div class="help-row" style="opacity:.85;"><span class="help-key">▶</span><span><b>Order</b>: ① ↓Pull (update first) → ② work (instruct/edit) → ③ ≡Status (check) → ④ ✓Commit (save) → ⑤ ↑Push (send).</span></div><h4>Input area</h4><div class="help-row"><span class="help-key">⭐</span><span><b>Favorites</b>. Save frequent instructions for one-tap send.</span></div><div class="help-row"><span class="help-key">📎</span><span><b>Attach</b>. Attach images or files to your instruction.</span></div><div class="help-row"><span class="help-key">📝</span><span><b>Tasks</b>. Split work into steps and run them in order.</span></div><div class="help-row"><span class="help-key">🎤</span><span><b>Voice input</b>. What you say goes into the input box.</span></div><div class="help-row"><span class="help-key">✕</span><span><b>Stop</b>. Shown only while running; stops the work.</span></div><div class="help-row"><span class="help-key">↑</span><span><b>Send</b>. Send the instruction (Enter inserts a newline, to avoid accidental sends).</span></div><h4>Handy gestures</h4><div class="help-row"><span class="help-key">🕘</span><span>Recall past instructions with the <b>🕘 button</b> in the input (tap to fill). On PC, when the box is empty, the <b>↑↓ keys</b> work too.</span></div><div class="help-row"><span class="help-key">↔</span><span><b>Swipe left/right</b> on the message area to switch projects.</span></div><div class="help-row"><span class="help-key">⤓</span><span><b>Pull down</b> at the top to refresh. <b>Long-press</b> a message to copy.</span></div>',
     },
   };
 
@@ -174,24 +223,46 @@
 
   let LANG = detect();
 
-  function t(key) {
-    return (DICT[LANG] && DICT[LANG][key]) ||
-           (DICT.ja && DICT.ja[key]) || key;
+  function t(key, params) {
+    let s = (DICT[LANG] && DICT[LANG][key]) ||
+            (DICT.ja && DICT.ja[key]) || key;
+    if (params) {
+      for (const k in params) s = s.split("{" + k + "}").join(params[k]);
+    }
+    return s;
+  }
+
+  // 要素の「元の中身」(=HTMLに書かれた日本語) を一度だけキャッシュ。
+  // → 日本語は元の中身を使う＝辞書に ja を持たなくてよい。英語等は辞書、無ければ元に戻す。
+  //   （大きな本文ブロックを英語辞書1キーだけで翻訳できる）
+  function orig(el, kind) {
+    const k = "__i18n_" + kind;
+    if (el[k] === undefined) {
+      el[k] = kind === "html" ? el.innerHTML
+            : kind === "ph" ? (el.getAttribute("placeholder") || "")
+            : kind === "title" ? (el.getAttribute("title") || "")
+            : el.textContent;
+    }
+    return el[k];
+  }
+  function tr(key, origVal) {
+    if (LANG === "ja") return (DICT.ja && DICT.ja[key]) || origVal;
+    return (DICT[LANG] && DICT[LANG][key]) || (DICT.ja && DICT.ja[key]) || origVal;
   }
 
   function apply(root) {
     const r = root || document;
     r.querySelectorAll("[data-i18n]").forEach((el) => {
-      el.textContent = t(el.getAttribute("data-i18n"));
+      el.textContent = tr(el.getAttribute("data-i18n"), orig(el, "text"));
     });
     r.querySelectorAll("[data-i18n-html]").forEach((el) => {
-      el.innerHTML = t(el.getAttribute("data-i18n-html"));
+      el.innerHTML = tr(el.getAttribute("data-i18n-html"), orig(el, "html"));
     });
     r.querySelectorAll("[data-i18n-ph]").forEach((el) => {
-      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-ph")));
+      el.setAttribute("placeholder", tr(el.getAttribute("data-i18n-ph"), orig(el, "ph")));
     });
     r.querySelectorAll("[data-i18n-title]").forEach((el) => {
-      el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
+      el.setAttribute("title", tr(el.getAttribute("data-i18n-title"), orig(el, "title")));
     });
     document.documentElement.lang = LANG;
   }
