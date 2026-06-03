@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from jobs import Job
+from engines import vault
 
 
 # Claude CLI のフルパス（PATH 解決もできるが、明示が確実）
@@ -158,6 +159,71 @@ def _short_tool_summary(name: str, inp: dict) -> str:
         return name
 
 
+def _wrap_emit_with_vault(job: Job, secrets: Optional[dict]):
+    """🔒金庫: job.emit を逆マスク付きに差し替える（不変条件2の本丸）。
+
+    emit を通る全イベントの文字列フィールド（token/result/summary/tool input/
+    tool_result/action/error）を配信前にサニタイズする:
+      - A方向: 既知の実値 → {{名前}}（mask_known_secrets）
+      - 自動: トークンらしき未知文字列 → ***MASKED***（mask_patterns）
+      - B方向: [[secret:名前]]値[[/secret]] → 値を分離、本文は [[secret:名前]] だけ
+    これで token 復唱・done サマリ・tool コマンド文字列・ログ追記の全経路で
+    実値が残らない。B方向で分離した値は job.meta["_vault_b_secrets"] に溜める
+    （後で SSE 配信時に別チャネルとして UI へ渡せるが、ログ/events には乗らない）。
+    """
+    orig_emit = job.emit
+    b_bucket: dict = job.meta.setdefault("_vault_b_secrets", {})
+
+    def _san(text):
+        if not isinstance(text, str) or not text:
+            return text
+        # B方向: 囲み規約の実値を分離（本文はプレースホルダだけ残る）
+        masked, found = vault.extract_b_secrets(text)
+        if found:
+            b_bucket.update(found)
+        # A方向 + 自動: 既知値を名前へ、未知トークンを ***MASKED*** へ
+        return vault.sanitize_outbound(masked, secrets)
+
+    def _sanitize_event(event: dict) -> Optional[dict]:
+        # 値が乗りうるフィールドだけ選んでサニタイズ（イベント型ごと）。
+        ev = dict(event)
+        # ⚠️ ストリーミング分割対策（取りこぼしの本丸）:
+        # token は1イベント＝数文字のことがあり、機密値が複数 token に割れると
+        # 各断片が逆マスクをすり抜け、繋げば復元できる（実質漏洩）。
+        # secrets/B方向を使うジョブでは token（部分表示）を**丸ごと捨てる**。
+        # done の result（全文確定後）でまとめて逆マスクするので表示は失われない。
+        if ev.get("type") == "token":
+            return None
+        for k in ("text", "result", "summary", "content", "name"):
+            if k in ev:
+                ev[k] = _san(ev[k])
+        # tool_use の input は辞書。中身の文字列値を再帰的にサニタイズ。
+        if isinstance(ev.get("input"), dict):
+            ev["input"] = {k: _san_deep(v) for k, v in ev["input"].items()}
+        # B方向: done 時点で分離済みの機密件数を UI に知らせる（実値は乗せない）。
+        # UI は件数だけ見て「金庫が受け取った」通知を出す。値は別配信しない（漏洩面を作らない）。
+        if ev.get("type") == "done":
+            ev["vault_received"] = len(b_bucket)
+        return ev
+
+    def _san_deep(v):
+        # input 値が文字列/辞書/配列いずれでも再帰的にサニタイズ（取りこぼし防止）。
+        if isinstance(v, str):
+            return _san(v)
+        if isinstance(v, dict):
+            return {k: _san_deep(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [_san_deep(x) for x in v]
+        return v
+
+    def emit(event: dict):
+        sanitized = _sanitize_event(event)
+        if sanitized is not None:  # token は捨てる（分割漏洩防止）
+            orig_emit(sanitized)
+
+    job.emit = emit  # type: ignore[method-assign]
+
+
 async def run(
     job: Job,
     *,
@@ -167,8 +233,19 @@ async def run(
     permission_mode: str = "bypassPermissions",
     model: Optional[str] = None,
     extra_args: Optional[list[str]] = None,
+    secrets: Optional[dict] = None,
 ) -> None:
-    """Claude Code をヘッドレスで起動し、ジョブにイベントを emit する。"""
+    """Claude Code をヘッドレスで起動し、ジョブにイベントを emit する。
+
+    🔒金庫: `secrets`（{名前: 実値}）が渡されたら:
+      - A方向: stdin に流すプロンプトの {{名前}} を実値に置換（一時ファイルのみ）。
+        job.instruction には {{名前}} のまま残る（不変条件1）。
+      - 逆マスク: emit を _wrap_emit_with_vault でラップ（不変条件2）。
+    secrets は引数（runner クロージャ）でのみ受け取り、job オブジェクトには保存しない。
+    """
+    # 🔒 逆マスクを最優先で仕掛ける（以降の emit は全てサニタイズ経由）。
+    if secrets:
+        _wrap_emit_with_vault(job, secrets)
 
     args: list[str] = [
         CLAUDE_CMD,
@@ -207,8 +284,13 @@ async def run(
     import tempfile
     import os as _os
     fd, prompt_path = tempfile.mkstemp(prefix="claude_job_", suffix=".txt")
+    # 🔒金庫A方向: 一時ファイルに書く瞬間だけ {{名前}} を実値に置換する。
+    # この置換後の文字列は job にも events にも戻さない（不変条件1）。
+    # secrets が無ければ instruction はそのまま（通常動作）。
+    prompt_to_write = vault.inject_secrets(instruction, secrets) if secrets else instruction
     with _os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(instruction)
+        f.write(prompt_to_write)
+    del prompt_to_write  # 実値入り文字列を早めに手放す
     cmd_str = f'{cmd_str} < "{prompt_path}"'
 
     def _cleanup_prompt():

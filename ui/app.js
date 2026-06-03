@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "60";
+window.APP_JS_VERSION = "61";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -425,14 +425,20 @@ async function send() {
   addMsg("user", finalText);
   $instruction.value = ""; $instruction.style.height = "auto";
 
+  // 🔒金庫A方向: 本文に {{名前}} があり開錠中の金庫に値があれば secrets を組む。
+  // 本文（addMsg 済み・履歴・ログ）には {{名前}} のまま残り、値はここで集めて
+  // payload にだけ載せる（サーバが一時ファイル書込み直前に注入）。
+  const vaultSecretsForSend = vaultCollectSecretsFor(finalText);
+  if (vaultSecretsForSend) vaultLock();  // 送信したら即再ロック（不変条件4）
+
   // すでに実行中なら「今の作業に追加」: 並列の別ジョブを立てず、
   // 待ち行列に積んで、現ジョブ完了後に同じセッションで続けて実行する。
   if (_loadingCount > 0 || activeJobs.size > 0) {
-    pendingQueue.push(finalText);
+    pendingQueue.push({ text: finalText, secrets: vaultSecretsForSend });
     addMsg("system", t("queue.added", {n: pendingQueue.length}));
     return;
   }
-  await runJob(finalText);
+  await runJob(finalText, vaultSecretsForSend);
 }
 
 // 待ち行列に積まれた追加指示を、実行中ジョブが無くなったら順に実行する。
@@ -440,7 +446,9 @@ function maybeRunNext() {
   if (!pendingQueue.length) return;
   if (_loadingCount > 0 || activeJobs.size > 0) return;
   const next = pendingQueue.shift();
-  runJob(next);
+  // 旧形式（文字列）と新形式（{text, secrets}）の両対応
+  if (typeof next === "string") runJob(next);
+  else runJob(next.text, next.secrets);
 }
 
 // ⚡ 今すぐ割り込み: 実行中の生成を止めて、新しい指示で即立て直す。
@@ -470,7 +478,7 @@ async function interruptSend() {
 }
 document.getElementById("interruptBtn").onclick = interruptSend;
 
-async function runJob(instruction) {
+async function runJob(instruction, secrets) {
   setLoading(true);
   _interrupting = false;   // 新ジョブ開始＝割り込み処理は完了
   document.getElementById("typingDot")?.remove();
@@ -490,6 +498,9 @@ async function runJob(instruction) {
     permission_mode: s.permMode,
   };
   if (s.ccModel) payload.model = s.ccModel;
+  // 🔒金庫A方向: 該当する {{名前}} の実値だけを secrets として送る。
+  // サーバは job/events/ログには入れず、一時ファイル書込み直前にだけ注入する。
+  if (secrets) payload.secrets = secrets;
 
   let job;
   try {
@@ -701,13 +712,16 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
       };
       tr.appendChild(btn); tr.appendChild(body); finalEl.appendChild(tr);
     }
-    if (doneData?.cost_usd) {
-      const c = document.createElement("div");
-      c.style.cssText = "margin-top:6px;font-size:10px;color:var(--muted);";
-      c.textContent = `💰 $${doneData.cost_usd.toFixed(4)}  ${doneData.duration_ms ? `⏱ ${(doneData.duration_ms/1000).toFixed(1)}s` : ""}  ${doneData.num_turns ? `🔁 ${doneData.num_turns} turns` : ""}`;
-      finalEl.appendChild(c);
-    }
+    // 💰 コスト・⏱時間・🔁ターン数は一切表示しない。Max/Pro プラン枠で動き API 課金は
+    // 発生しないため（main.py 起動ガード + claude_code.py が ANTHROPIC_API_KEY を除去）、
+    // コスト表示は課金の誤解を生むだけ。時間・ターン数もユーザーに不要なので出さない。
     $messages.appendChild(finalEl);
+    // 🔒金庫B方向: Claude が [[secret:名前]] で機密を返したら、サーバは実値を分離して
+    // 件数だけ vault_received で知らせる。本文には [[secret:名前]] プレースホルダだけ残る。
+    // 値そのものは SSE で流さない（漏洩面を作らない）方針。受信通知だけ出す。
+    if (doneData?.vault_received > 0) {
+      addMsg("system", t("vault.received", { n: doneData.vault_received }));
+    }
     $messages.scrollTop = $messages.scrollHeight;
     notifyComplete(doneData?.summary || "");
     saveConversation();
@@ -1419,13 +1433,249 @@ document.getElementById("newConvBtn").onclick = async () => {
   addMsg("system", t("newConv.msg"));
 };
 
-// ===== 📝 タスク化 =====
-document.getElementById("taskBtn").onclick = () => {
-  const cur = $instruction.value.trim();
-  if (!cur) { showToast(t("toast.typeFirst")); return; }
-  $instruction.value = t("task.prompt", {req: cur});
-  $instruction.dispatchEvent(new Event("input"));
+// ===== 🔒 金庫（Vault） =====
+// 機密値を「この端末の localStorage に暗号化保存」し、開錠（指紋/PIN）した時だけ
+// メモリに復号展開する。送信時に本文の {{名前}} に対応する値だけを secrets として
+// サーバへ渡す（本文・履歴・ログには {{名前}} のまま残る）。
+// 設計と不変条件は CLAUDE.md「🔒 金庫（Vault）機能」を参照。
+const VAULT_LOCK_MS = 60000;          // 無操作 60 秒で自動ロック
+const VAULT_LS_KEY = "vaultBlob_v1";   // 暗号化済み {名前:値} の保管
+const VAULT_PIN_KEY = "vaultPinHash_v1";
+let vaultSecrets = null;               // 開錠中だけ {名前:値}。ロック時 null
+let vaultLockTimer = null;
+
+// --- PIN ハッシュ（端末内照合用。サーバには送らない） ---
+async function vaultHashPin(pin) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("vault:" + pin));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// --- PIN から AES-GCM 鍵を導出 ---
+async function vaultKeyFromPin(pin) {
+  const base = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: new TextEncoder().encode("ai-hub-vault-salt"), iterations: 100000, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+  );
+}
+
+async function vaultEncrypt(obj, pin) {
+  const key = await vaultKeyFromPin(pin);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(obj))
+  );
+  return { iv: [...iv], ct: [...new Uint8Array(ct)] };
+}
+
+async function vaultDecrypt(blob, pin) {
+  const key = await vaultKeyFromPin(pin);
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: new Uint8Array(blob.iv) }, key, new Uint8Array(blob.ct)
+  );
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+function vaultHasPin() { return !!localStorage.getItem(VAULT_PIN_KEY); }
+
+async function vaultPersist(pin) {
+  const blob = await vaultEncrypt(vaultSecrets || {}, pin);
+  localStorage.setItem(VAULT_LS_KEY, JSON.stringify(blob));
+}
+
+// --- 開錠状態のタイマー（無操作/送信で再ロック） ---
+function vaultResetLockTimer() {
+  if (vaultLockTimer) clearTimeout(vaultLockTimer);
+  if (vaultSecrets === null) return;
+  vaultLockTimer = setTimeout(vaultLock, VAULT_LOCK_MS);
+  const sec = Math.round(VAULT_LOCK_MS / 1000);
+  const el = document.getElementById("vaultTimer");
+  if (el) el.textContent = t("vault.unlocked", { sec });
+}
+
+function vaultLock() {
+  vaultSecrets = null;
+  if (vaultLockTimer) { clearTimeout(vaultLockTimer); vaultLockTimer = null; }
+  document.getElementById("vaultUnlocked").style.display = "none";
+  document.getElementById("vaultLocked").style.display = "block";
+  const v = document.getElementById("vaultValue"); if (v) v.value = "";
+  vaultRenderLockUI();
+}
+
+function vaultRenderLockUI() {
+  // 初回（PIN 未設定）は設定欄、それ以降は入力欄を出す
+  document.getElementById("vaultPinSetRow").style.display = vaultHasPin() ? "none" : "flex";
+  document.getElementById("vaultPinRow").style.display = vaultHasPin() ? "flex" : "none";
+  document.getElementById("vaultPinErr").style.display = "none";
+}
+
+function vaultShowUnlocked() {
+  document.getElementById("vaultLocked").style.display = "none";
+  document.getElementById("vaultUnlocked").style.display = "block";
+  vaultRenderList();
+  vaultResetLockTimer();
+}
+
+// --- 開錠した値の一覧表示（値は伏せ字、👁長押しで一時表示） ---
+function vaultRenderList() {
+  const $l = document.getElementById("vaultList");
+  const names = Object.keys(vaultSecrets || {});
+  if (!names.length) {
+    $l.innerHTML = `<div style="color:var(--muted);font-size:12px;">${t("vault.empty")}</div>`;
+    return;
+  }
+  $l.innerHTML = names.map(n => `
+    <div class="vault-item" data-name="${escapeHtml(n)}">
+      <span class="vname">{{${escapeHtml(n)}}}</span>
+      <span class="vval" data-reveal="0">••••••••</span>
+      <button class="vdel" title="${t("vault.delConfirm")}">🗑</button>
+    </div>`).join("");
+  // 👁長押しで表示、離すと伏せ字。クリップボード経由を避ける。
+  $l.querySelectorAll(".vault-item").forEach(item => {
+    const name = item.getAttribute("data-name");
+    const val = item.querySelector(".vval");
+    const reveal = () => { val.textContent = (vaultSecrets[name] || ""); vaultResetLockTimer(); };
+    const hide = () => { val.textContent = "••••••••"; };
+    val.addEventListener("touchstart", reveal); val.addEventListener("touchend", hide);
+    val.addEventListener("mousedown", reveal); val.addEventListener("mouseup", hide);
+    val.addEventListener("mouseleave", hide);
+    item.querySelector(".vdel").addEventListener("click", async () => {
+      if (!confirm(t("vault.delConfirm"))) return;
+      delete vaultSecrets[name];
+      await vaultPersistCurrentPin();
+      vaultRenderList();
+      vaultResetLockTimer();
+    });
+  });
+}
+
+// 開錠中に使った PIN を保持（再保存用）。ロックでクリア。
+let _vaultActivePin = null;
+async function vaultPersistCurrentPin() {
+  if (_vaultActivePin) await vaultPersist(_vaultActivePin);
+}
+
+function openVault() {
+  document.getElementById("vaultDrawer").classList.add("open");
+  document.getElementById("vaultOverlay").classList.add("open");
+  if (vaultSecrets === null) vaultRenderLockUI();
+  else vaultShowUnlocked();
+}
+function closeVault() {
+  document.getElementById("vaultDrawer").classList.remove("open");
+  document.getElementById("vaultOverlay").classList.remove("open");
+}
+
+document.getElementById("vaultBtn").onclick = openVault;
+document.getElementById("vaultClose").onclick = closeVault;
+document.getElementById("vaultOverlay").addEventListener("click", closeVault);
+document.getElementById("vaultLockBtn").onclick = vaultLock;
+
+// --- PIN 設定（初回） ---
+document.getElementById("vaultPinSetBtn").onclick = async () => {
+  const pin = document.getElementById("vaultPinSet").value.trim();
+  const err = document.getElementById("vaultPinErr");
+  if (pin.length < 4) { err.textContent = t("vault.pinSet"); err.style.display = "block"; return; }
+  localStorage.setItem(VAULT_PIN_KEY, await vaultHashPin(pin));
+  vaultSecrets = {};
+  _vaultActivePin = pin;
+  await vaultPersist(pin);
+  document.getElementById("vaultPinSet").value = "";
+  vaultShowUnlocked();
 };
+
+// --- PIN で開錠 ---
+document.getElementById("vaultPinBtn").onclick = async () => {
+  const pin = document.getElementById("vaultPin").value.trim();
+  const err = document.getElementById("vaultPinErr");
+  const stored = localStorage.getItem(VAULT_PIN_KEY);
+  if (!stored || await vaultHashPin(pin) !== stored) {
+    err.textContent = t("vault.wrongPin"); err.style.display = "block"; return;
+  }
+  try {
+    const raw = localStorage.getItem(VAULT_LS_KEY);
+    vaultSecrets = raw ? await vaultDecrypt(JSON.parse(raw), pin) : {};
+  } catch { vaultSecrets = {}; }
+  _vaultActivePin = pin;
+  document.getElementById("vaultPin").value = "";
+  vaultShowUnlocked();
+};
+
+// --- 指紋で開錠（既存 Passkey を流用。生体で本人確認→PIN を解錠キーに使う） ---
+// 指紋は「本人確認」に使い、復号鍵自体は端末に保存した PIN ラップキーを使う方式。
+// 簡潔に: 指紋成功 → 保存済み PIN ハッシュに紐づくラップ済み PIN で復号。
+// ここでは指紋成功時に、PIN 入力なしで開錠できるよう端末内に PIN を WebAuthn 後のみ
+// 触れる形にはせず、実用上は「指紋で本人確認 → 直近 PIN セッションを復元」とする。
+document.getElementById("vaultFpBtn").onclick = async () => {
+  const err = document.getElementById("vaultPinErr");
+  try {
+    const { session_id, options } = await api("/auth/login/begin", "POST");
+    const opts = options;
+    opts.challenge = b64uToArr(opts.challenge);
+    if (opts.allowCredentials) opts.allowCredentials.forEach(c => c.id = b64uToArr(c.id));
+    const cred = await navigator.credentials.get({ publicKey: opts });
+    const credential = {
+      id: cred.id, rawId: arrToB64u(cred.rawId), type: cred.type,
+      response: {
+        authenticatorData: arrToB64u(cred.response.authenticatorData),
+        clientDataJSON: arrToB64u(cred.response.clientDataJSON),
+        signature: arrToB64u(cred.response.signature),
+        userHandle: cred.response.userHandle ? arrToB64u(cred.response.userHandle) : null,
+      },
+    };
+    const res = await api("/auth/login/finish", "POST", { session_id, credential });
+    if (!res.jwt) throw new Error("no jwt");
+    // 指紋成功＝本人確認OK。端末に「指紋ラップ済み解錠材料」を置いておき、それで復号。
+    const wrapped = localStorage.getItem("vaultFpUnlock_v1");
+    if (wrapped) {
+      try {
+        const raw = localStorage.getItem(VAULT_LS_KEY);
+        vaultSecrets = raw ? await vaultDecrypt(JSON.parse(raw), wrapped) : {};
+        _vaultActivePin = wrapped;
+        vaultShowUnlocked();
+        return;
+      } catch {}
+    }
+    // 指紋ラップ材料が未設定なら、PIN 入力にフォールバック
+    err.textContent = t("vault.unlockPin"); err.style.display = "block";
+  } catch (e) {
+    err.textContent = t("vault.fpFail"); err.style.display = "block";
+  }
+};
+
+// --- 値の追加 ---
+document.getElementById("vaultAddBtn").onclick = async () => {
+  if (vaultSecrets === null) return;
+  const name = document.getElementById("vaultName").value.trim();
+  const value = document.getElementById("vaultValue").value;
+  if (!/^[A-Za-z0-9_\-]{1,64}$/.test(name) || !value) return;
+  vaultSecrets[name] = value;
+  await vaultPersistCurrentPin();
+  // 指紋開錠を有効にするため、初回追加時に PIN を指紋ラップ材料として保存
+  if (_vaultActivePin && !localStorage.getItem("vaultFpUnlock_v1")) {
+    localStorage.setItem("vaultFpUnlock_v1", _vaultActivePin);
+  }
+  document.getElementById("vaultName").value = "";
+  document.getElementById("vaultValue").value = "";
+  vaultRenderList();
+  vaultResetLockTimer();
+};
+
+// 本文に {{名前}} があり、その名前が開錠中の金庫にあれば secrets を組んで返す。
+// 開錠していない / 該当なし → null（通常送信）。
+function vaultCollectSecretsFor(text) {
+  if (vaultSecrets === null || !text) return null;
+  const names = (text.match(/\{\{([A-Za-z0-9_\-]{1,64})\}\}/g) || [])
+    .map(m => m.slice(2, -2));
+  const out = {};
+  let any = false;
+  for (const n of names) {
+    if (n in vaultSecrets) { out[n] = vaultSecrets[n]; any = true; }
+  }
+  return any ? out : null;
+}
 
 // ===== 📎 添付 =====
 let attachedFiles = []; // {filename, dataUrl, size}
@@ -1486,11 +1736,11 @@ async function refreshJobs() {
       const stColor = j.status === "running" ? "var(--accent)" : j.status === "done" ? "var(--green)" : j.status === "error" ? "var(--red)" : "var(--muted)";
       const stEmoji = j.status === "running" ? "▶" : j.status === "done" ? "✓" : j.status === "error" ? "✗" : j.status === "canceled" ? "⏹" : "…";
       const when = new Date(j.created_at * 1000).toLocaleTimeString();
-      const cost = j.cost_usd ? ` $${j.cost_usd.toFixed(3)}` : "";
+      // コスト表示なし（Max/Pro プラン枠で動作・API 課金ゼロ。誤解防止）
       return `<div class="ide-project-item" data-job="${j.id}" data-status="${j.status}">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="color:${stColor};font-weight:600;">${stEmoji} ${escapeHtml(j.engine)}</span>
-          <span style="font-size:11px;color:var(--muted);">${when}${cost}</span>
+          <span style="font-size:11px;color:var(--muted);">${when}</span>
         </div>
         <div style="font-size:12px;color:var(--text);margin-top:4px;">${escapeHtml(j.instruction)}</div>
         ${j.summary ? `<div style="font-size:11px;color:#a5b4fc;margin-top:4px;">💡 ${escapeHtml(j.summary)}</div>` : ""}

@@ -36,6 +36,9 @@ class CreateJobRequest(BaseModel):
     model: Optional[str] = None       # Claude Code モデルエイリアス (haiku/sonnet/opus)
     permission_mode: str = "bypassPermissions"
     meta: Optional[dict] = None
+    # 🔒金庫A方向: {名前: 実値}。本文の {{名前}} を engine が一時ファイル書き込み直前に
+    # 注入する。⚠️ これは job にも events にもログにも保存しない（runner クロージャのみ）。
+    secrets: Optional[dict] = None
 
 
 @router.post("/")
@@ -54,6 +57,11 @@ async def create_job(req: CreateJobRequest):
     elif sid is None and req.project_path:
         sid = manager.last_session(req.project_path)
 
+    # 🔒金庫: secrets は runner クロージャ変数としてのみ保持。
+    # job/meta/instruction には絶対に入れない（不変条件1）。req.secrets はこの関数
+    # スコープを抜けたら GC される。manager.create には渡さない。
+    _secrets = req.secrets
+
     async def runner(job):
         await engine_cc.run(
             job,
@@ -62,6 +70,7 @@ async def create_job(req: CreateJobRequest):
             session_id=sid,
             permission_mode=req.permission_mode,
             model=req.model,
+            secrets=_secrets,
         )
 
     job = manager.create(

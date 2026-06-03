@@ -13,7 +13,7 @@
   <title>AI hub β</title>
   <!-- アプリ版数。UIを変えたらここを上げる。app.js?v / sw.js?v が新URLになり
        Cloudflareのエッジキャッシュを貫通して最新が届く。index.html自体は no-store。 -->
-  <script>window.APP_VERSION = "60";</script>
+  <script>window.APP_VERSION = "61";</script>
   <link rel="manifest" href="/ui/manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
@@ -23,7 +23,7 @@
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <!-- 軽量 i18n（EN/JA 切替）。?v は APP_VERSION と揃える（三点同期の対象に準じる） -->
-  <script src="/ui/i18n.js?v=60"></script>
+  <script src="/ui/i18n.js?v=61"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
@@ -383,6 +383,21 @@
     }
     #fileTreeDrawer.open { bottom: 0; }
     #jobsDrawer.open, #procsDrawer.open { bottom: 0 !important; }
+
+    /* 🔒 金庫 */
+    #vaultDrawer {
+      position: fixed; bottom: -100%; left: 0; right: 0; background: var(--card);
+      border-top: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 20px;
+      transition: bottom .25s ease; z-index: 100;
+      max-height: 80dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    }
+    #vaultDrawer.open { bottom: 0; }
+    #vaultDrawer h3 { font-size: 16px; font-weight: 700; }
+    #vaultDrawer input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+    .vault-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+    .vault-item .vname { font-family: monospace; color: var(--accent); flex-shrink: 0; }
+    .vault-item .vval { flex: 1; font-family: monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; }
+    .vault-item .vdel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; flex-shrink: 0; }
     #fileTreeDrawer h3 { font-size: 15px; font-weight: 700; }
     .tree-item { padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: monospace; cursor: pointer; }
     .tree-item:active { background: var(--border); }
@@ -506,7 +521,7 @@
         <button class="btn-sm" id="histToggleBtn" title="送信履歴（過去の指示）" data-i18n-title="tip.hist" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">🕘</button>
         <button class="btn-sm" id="favToggleBtn" title="お気に入り" data-i18n-title="tip.fav" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">⭐</button>
         <button class="btn-sm" id="attachBtn"    title="画像/ファイルを添付（Claude Code）" data-i18n-title="tip.attach" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">📎</button>
-        <button class="btn-sm" id="taskBtn"      title="タスク化して順に実行" data-i18n-title="tip.task" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">📝</button>
+        <button class="btn-sm" id="vaultBtn"     title="🔒 金庫（機密値を履歴に残さず渡す/受け取る）" data-i18n-title="tip.vault" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">🔒</button>
       </div>
       <button class="mic-btn"    id="micBtn">🎤</button>
       <button class="interrupt-btn" id="interruptBtn" title="今すぐ割り込み" data-i18n-title="tip.interrupt">⚡</button>
@@ -594,6 +609,43 @@
   <div class="row2">
     <button class="btn-cancel" id="projCancel" data-i18n="btn.cancel">キャンセル</button>
     <button class="btn-add"    id="projSave" data-i18n="btn.add">追加</button>
+  </div>
+</div>
+
+<!-- 🔒 金庫（Vault） -->
+<div class="drawer-overlay" id="vaultOverlay"></div>
+<div id="vaultDrawer">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3 data-i18n="vault.title">🔒 金庫</h3>
+    <button id="vaultClose" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;">✕</button>
+  </div>
+
+  <!-- ロック画面 -->
+  <div id="vaultLocked">
+    <p style="font-size:13px;color:var(--muted);" data-i18n="vault.locked">金庫はロックされています</p>
+    <button class="btn-add" id="vaultFpBtn" style="width:100%;" data-i18n="vault.unlockFp">👆 指紋で開く</button>
+    <div id="vaultPinSetRow" style="display:none;flex-direction:column;gap:8px;margin-top:8px;">
+      <input id="vaultPinSet" type="password" inputmode="numeric" placeholder="暗証番号を設定（初回・4桁以上）" data-i18n-ph="vault.pinSet">
+      <button class="btn-add" id="vaultPinSetBtn" style="width:100%;" data-i18n="vault.pinSetBtn">設定</button>
+    </div>
+    <div id="vaultPinRow" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+      <input id="vaultPin" type="password" inputmode="numeric" placeholder="暗証番号" data-i18n-ph="vault.pinPh">
+      <button class="btn-add" id="vaultPinBtn" style="width:100%;" data-i18n="vault.unlockBtn">開く</button>
+    </div>
+    <div id="vaultPinErr" style="display:none;color:var(--red);font-size:12px;"></div>
+  </div>
+
+  <!-- 開錠後 -->
+  <div id="vaultUnlocked" style="display:none;">
+    <div id="vaultTimer" style="font-size:12px;color:var(--green);"></div>
+    <p style="font-size:11px;color:var(--muted);" data-i18n="vault.howto">本文に {{名前}} と書くと送信時に値が注入されます。履歴・ログには名前だけ残ります。</p>
+    <div style="display:flex;gap:6px;">
+      <input id="vaultName" placeholder="名前（例: API_KEY）" data-i18n-ph="vault.namePh" style="flex:1;">
+    </div>
+    <input id="vaultValue" type="password" placeholder="値（機密）" data-i18n-ph="vault.valuePh" style="width:100%;">
+    <button class="btn-add" id="vaultAddBtn" style="width:100%;" data-i18n="vault.addBtn">＋ 追加</button>
+    <div id="vaultList" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;"></div>
+    <button class="btn-cancel" id="vaultLockBtn" style="width:100%;margin-top:8px;" data-i18n="vault.lockBtn">🔒 今すぐロック</button>
   </div>
 </div>
 
