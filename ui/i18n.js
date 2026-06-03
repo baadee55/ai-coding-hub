@@ -218,6 +218,27 @@
       "pk.tokenReceived": "<span style=\"color:var(--yellow);\">📱 登録トークンを受信しました。下のボタンを押して登録してください。</span>",
       "fav.editPrompt": "お気に入りを編集",
       "task.prompt": "次のタスクを実行してください。\n\n要件:\n{req}\n\n進め方:\n1. まず TODO に分解\n2. 各 TODO を順に実行（必要なファイル読込・編集・コマンド実行を含む）\n3. 完了後、何をどう変えたかを Markdown チェックリストで報告\n4. テストや動作確認が可能なら最後に実施",
+      "tip.update": "アプリを更新（最新版を取得）",
+      "tip.help": "使い方ヘルプ",
+      "tip.model": "タップで Claude Code モデル切替（デフォルト/Haiku/Sonnet/Opus）",
+      "tip.newConv": "新しい会話を開始（セッションを切る）",
+      "tip.jobs": "ジョブ履歴・実行中",
+      "tip.procs": "プロセス（dev server等）",
+      "tip.context": "AIがプロジェクト状況を解説",
+      "tip.daily": "今日の作業をAIがまとめ",
+      "tip.fileTree": "ファイル一覧",
+      "tip.addProject": "プロジェクトを追加",
+      "tip.vscode": "選んだプロジェクトを VS Code（ブラウザ）で開く",
+      "tip.pull": "リモートの変更を取得",
+      "tip.status": "変更の一覧を確認",
+      "tip.commit": "変更をコミット",
+      "tip.push": "リモートに送信",
+      "tip.hist": "送信履歴（過去の指示）",
+      "tip.fav": "お気に入り",
+      "tip.attach": "画像/ファイルを添付（Claude Code）",
+      "tip.task": "タスク化して順に実行",
+      "tip.cancel": "中断",
+      "pullIndicator": "↻ 離して更新",
     },
     en: {
       "header.sub": "Your PC's AI — from your phone",
@@ -426,6 +447,27 @@
       "pk.tokenReceived": "<span style=\"color:var(--yellow);\">📱 Registration token received. Tap the button to register.</span>",
       "fav.editPrompt": "Edit favorite",
       "task.prompt": "Do the following task.\n\nRequirements:\n{req}\n\nApproach:\n1. Break it into TODOs\n2. Do each in order (read/edit files, run commands as needed)\n3. When done, report what changed as a Markdown checklist\n4. If possible, run tests or verify at the end",
+      "tip.update": "Update app (get latest)",
+      "tip.help": "Help",
+      "tip.model": "Switch Claude Code model (Default/Haiku/Sonnet/Opus)",
+      "tip.newConv": "New conversation (clear session)",
+      "tip.jobs": "Job history / running",
+      "tip.procs": "Processes (dev server, etc.)",
+      "tip.context": "AI explains project status",
+      "tip.daily": "AI summarizes today's work",
+      "tip.fileTree": "File list",
+      "tip.addProject": "Add project",
+      "tip.vscode": "Open the selected project in VS Code (browser)",
+      "tip.pull": "Fetch remote changes",
+      "tip.status": "Show changed files",
+      "tip.commit": "Commit changes",
+      "tip.push": "Push to remote",
+      "tip.hist": "History (past instructions)",
+      "tip.fav": "Favorites",
+      "tip.attach": "Attach image/file",
+      "tip.task": "Split into tasks, run in order",
+      "tip.cancel": "Stop",
+      "pullIndicator": "↻ Release to refresh",
       "help.body": '<div class="help-title">❓ Guide / button reference</div><div class="help-lead">Just type an instruction and the AI on your PC (Claude Code, by default) edits files, runs commands, and more. Here is what each button does.</div><h4>Header (top row)</h4><div class="help-row"><span class="help-key">🔄</span><span><b>Update app</b>. Pull the latest UI (if it looks out of date).</span></div><div class="help-row"><span class="help-key">❓</span><span>Open <b>this help</b>.</span></div><div class="help-row"><span class="help-key">⚙️</span><span><b>Settings</b>: agent URL, model, permissions, Passkey, restart agent, etc.</span></div><div class="help-row"><span class="help-key">●</span><span>Connection status (running / disconnected).</span></div><h4>VS Code in the Git bar</h4><div class="help-row"><span class="help-key">⬡</span><span><b>VS Code</b>. Open the selected project in browser VS Code (vscode.dev) — handy on a tablet or big screen.</span></div><h4>Project row</h4><div class="help-row"><span class="help-key">▾</span><span><b>Project select</b>. Switch the target folder for instructions (swipe left/right too).</span></div><div class="help-row"><span class="help-key">🆕</span><span><b>New conversation</b>. Cut the prior context and start fresh (when topics get mixed).</span></div><div class="help-row"><span class="help-key">🗂</span><span><b>Job history</b>. List of running/finished instructions. Tap to restore into the chat.</span></div><div class="help-row"><span class="help-key">🚀</span><span><b>Process manager</b>. Start long-running things like <code>npm run dev</code> or <code>pytest</code> and view logs.</span></div><div class="help-row"><span class="help-key">📋</span><span><b>Status explainer</b>. The AI explains git changes in plain language.</span></div><div class="help-row"><span class="help-key">📅</span><span><b>Daily summary</b>. The AI reports the work done today.</span></div><div class="help-row"><span class="help-key">📂</span><span><b>File list</b>. Browse inside the project and check contents.</span></div><div class="help-row"><span class="help-key">＋</span><span><b>Add project</b>. Register a folder path.</span></div><h4>Git operations (save &amp; share changes)</h4><div class="help-lead" style="margin:6px 0 10px;">Git records the history of your work and saves/shares it online (e.g. GitHub). The buttons below act on the selected project. Even without knowing the jargon, pressing them in the order below works.</div><div class="help-row"><span class="help-key">↓</span><span><b>Pull (fetch)</b>. Bring the latest from online to your machine. Press it <b>before starting</b> to pick up changes made on another PC.</span></div><div class="help-row"><span class="help-key">≡</span><span><b>Status (check)</b>. See which files you changed, as a list. For "what did I touch?".</span></div><div class="help-row"><span class="help-key">✓</span><span><b>Commit (save)</b>. Give the changes a message and <b>record them in local history</b>. A message prompt appears. Think of it as a save point. <u>All changes are recorded together.</u></span></div><div class="help-row"><span class="help-key">↑</span><span><b>Push (send)</b>. Send committed changes <b>online (e.g. GitHub) to share / back up</b>. <u>Commit alone does not reach the cloud — Push is required at the end.</u></span></div><div class="help-row" style="opacity:.85;"><span class="help-key">▶</span><span><b>Order</b>: ① ↓Pull (update first) → ② work (instruct/edit) → ③ ≡Status (check) → ④ ✓Commit (save) → ⑤ ↑Push (send).</span></div><h4>Input area</h4><div class="help-row"><span class="help-key">⭐</span><span><b>Favorites</b>. Save frequent instructions for one-tap send.</span></div><div class="help-row"><span class="help-key">📎</span><span><b>Attach</b>. Attach images or files to your instruction.</span></div><div class="help-row"><span class="help-key">📝</span><span><b>Tasks</b>. Split work into steps and run them in order.</span></div><div class="help-row"><span class="help-key">🎤</span><span><b>Voice input</b>. What you say goes into the input box.</span></div><div class="help-row"><span class="help-key">✕</span><span><b>Stop</b>. Shown only while running; stops the work.</span></div><div class="help-row"><span class="help-key">↑</span><span><b>Send</b>. Send the instruction (Enter inserts a newline, to avoid accidental sends).</span></div><h4>Handy gestures</h4><div class="help-row"><span class="help-key">🕘</span><span>Recall past instructions with the <b>🕘 button</b> in the input (tap to fill). On PC, when the box is empty, the <b>↑↓ keys</b> work too.</span></div><div class="help-row"><span class="help-key">↔</span><span><b>Swipe left/right</b> on the message area to switch projects.</span></div><div class="help-row"><span class="help-key">⤓</span><span><b>Pull down</b> at the top to refresh. <b>Long-press</b> a message to copy.</span></div>',
     },
   };
@@ -486,16 +528,18 @@
   function updateToggle() {
     const b = document.getElementById("langToggleBtn");
     if (!b) return;
-    b.textContent = "🌐";  // アイコンのみ（ヘッダ幅を食わない）。切替先は title に
-    b.title = LANG === "ja" ? "Language: 日本語 → English" : "Language: English → 日本語";
+    // 現在の言語を表示（JP / EN）。これで「今どっちか」が一目で分かる。
+    b.textContent = "🌐 " + (LANG === "ja" ? "JP" : "EN");
+    b.title = "Language / 言語";
   }
 
   function setLang(l) {
-    if (!DICT[l]) return;
-    LANG = l;
+    if (!DICT[l] || l === LANG) return;
     localStorage.setItem("lang", l);
-    apply();
-    updateToggle();
+    // app.js が描画した動的部分（welcome 画面・メッセージ等）は data-i18n ではないので
+    // apply() では更新されない。確実に全部を新言語で出し直すためページを再読込する。
+    // 接続情報・会話は localStorage から復元されるので体感はほぼ一瞬。
+    location.reload();
   }
 
   window.t = t;

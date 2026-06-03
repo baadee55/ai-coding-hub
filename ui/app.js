@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "57";
+window.APP_JS_VERSION = "58";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
