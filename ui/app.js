@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "51";
+window.APP_JS_VERSION = "52";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -189,18 +189,18 @@ async function checkHealth() {
     if (d.agent === "down") {
       $statusDot.className = "status-dot";
       $statusDot.style.background = "var(--yellow)";
-      $statusText.textContent = "エージェント停止中";
+      $statusText.textContent = t("status.agentDown");
       isPaused = false; return "watchdog";
     }
     isPaused = !!d.paused;
     $statusDot.className = isPaused ? "status-dot" : "status-dot on";
     $statusDot.style.background = isPaused ? "var(--yellow)" : "";
-    $statusText.textContent = isPaused ? (d.pc || "") + " 休止中" : (d.pc || "") + " 稼働中";
+    $statusText.textContent = (d.pc || "") + " " + (isPaused ? t("status.paused") : t("status.running"));
     return true;
   } catch {
     $statusDot.className = "status-dot off";
     $statusDot.style.background = "";
-    $statusText.textContent = "切断";
+    $statusText.textContent = t("status.disconnected");
     return false;
   }
 }
@@ -551,7 +551,7 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
     const delay = Math.min(800 * Math.pow(1.7, nextAttempt), 12000);
     // 通知は fixed の帯（#connBar）だけに出す。#messages に積むと最後の行として
     // 入力欄の上に居座り、画面が短い時にツールバーを押し出す原因になっていた。
-    setConnBar("↻ 再接続中…", false);
+    setConnBar(t("status.reconnecting"), false);
     await new Promise(r => setTimeout(r, delay));
     settled = true;  // この呼び出しの後始末は次の streamJob に委譲
     return streamJob(jobId, lastSeq + 1, abort, nextAttempt);
@@ -1101,7 +1101,7 @@ document.getElementById("restartBtn").onclick = async () => {
   try {
     await api("/restart", "POST");
     addMsg("system", "🔄 再起動中… 自動で再接続します");
-    $statusDot.className = "status-dot"; $statusDot.style.background = "var(--yellow)"; $statusText.textContent = "再起動中";
+    $statusDot.className = "status-dot"; $statusDot.style.background = "var(--yellow)"; $statusText.textContent = t("status.restarting");
     let tries = 0;
     const poll = setInterval(async () => {
       tries++;
@@ -1129,7 +1129,7 @@ document.getElementById("shutdownBtn").onclick = async () => {
   if (!confirm("エージェントを完全停止します。\n再起動はPCで「AI hub β」を起動し直してください。")) return;
   try { await api("/shutdown", "POST"); } catch {}
   addMsg("system", "エージェントを停止しました");
-  $statusDot.className = "status-dot off"; $statusDot.style.background = ""; $statusText.textContent = "停止済み";
+  $statusDot.className = "status-dot off"; $statusDot.style.background = ""; $statusText.textContent = t("status.stopped");
   closeDrawer();
 };
 

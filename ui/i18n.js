@@ -13,7 +13,14 @@
   const DICT = {
     ja: {
       "header.sub": "PCのAI作業の続きをスマホから",
-      "lang.toggle": "🌐 EN",
+      "status.checking": "確認中",
+      "status.running": "稼働中",
+      "status.paused": "休止中",
+      "status.disconnected": "切断",
+      "status.agentDown": "エージェント停止中",
+      "status.restarting": "再起動中",
+      "status.stopped": "停止済み",
+      "status.reconnecting": "↻ 再接続中…",
       "setup.title": "🔌 はじめに接続設定",
       "setup.desc": "PCのエージェントに接続するために<br>URLとトークンを設定してください。<br>QRコードをスキャンすると自動入力されます。",
       "setup.url": "エージェントURL",
@@ -37,8 +44,15 @@
       "perm.plan": "プランのみ作成（実行しない）",
     },
     en: {
-      "header.sub": "Continue your PC's AI work, from your phone",
-      "lang.toggle": "🌐 日本語",
+      "header.sub": "Your PC's AI — from your phone",
+      "status.checking": "Checking…",
+      "status.running": "running",
+      "status.paused": "paused",
+      "status.disconnected": "Disconnected",
+      "status.agentDown": "Agent stopped",
+      "status.restarting": "Restarting…",
+      "status.stopped": "Stopped",
+      "status.reconnecting": "↻ Reconnecting…",
       "setup.title": "🔌 First, connect",
       "setup.desc": "To reach your PC's agent,<br>set the URL and token.<br>Scanning the QR code fills them in automatically.",
       "setup.url": "Agent URL",
@@ -96,7 +110,9 @@
 
   function updateToggle() {
     const b = document.getElementById("langToggleBtn");
-    if (b) b.textContent = t("lang.toggle");
+    if (!b) return;
+    b.textContent = "🌐";  // アイコンのみ（ヘッダ幅を食わない）。切替先は title に
+    b.title = LANG === "ja" ? "Language: 日本語 → English" : "Language: English → 日本語";
   }
 
   function setLang(l) {
