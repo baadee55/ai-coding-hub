@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "58";
+window.APP_JS_VERSION = "59";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -136,6 +136,7 @@ const activeJobs = new Map();
 const ADHOC_KEY = Symbol("adhoc");   // 📋状況/📅まとめ等の非ジョブ系処理用キー
 let lastJobId = null;                // 中断ボタンと再接続が対象にする最新ジョブ
 let _loadingCount = 0;
+let _interrupting = false;   // ⚡割り込み中フラグ（中断メッセージの二重表示を抑制）
 let isPaused = false;
 let currentAbortController = null;
 // 実行中に追加送信された指示の待ち行列。現ジョブ完了後に同じセッションで続けて実行する。
@@ -379,6 +380,9 @@ function setLoading(on) {
   $sendBtn.style.display = "flex";
   const $cancel = document.getElementById("cancelBtn");
   if (loading) $cancel.classList.add("visible"); else $cancel.classList.remove("visible");
+  const $interrupt = document.getElementById("interruptBtn");
+  if ($interrupt) { if (loading) $interrupt.classList.add("visible"); else $interrupt.classList.remove("visible"); }
+  $sendBtn.title = loading ? t("tip.sendQueue") : t("tip.send");
   document.getElementById("typingDot")?.remove();
   if (loading) {
     const d = document.createElement("div");
@@ -439,8 +443,36 @@ function maybeRunNext() {
   runJob(next);
 }
 
+// ⚡ 今すぐ割り込み: 実行中の生成を止めて、新しい指示で即立て直す。
+// 会話(セッション)は切らない＝ new_session:false の resume なので文脈は保持される。
+// 既存の待ち行列はクリアせず、この指示を先頭に差し込んで最優先で実行する。
+async function interruptSend() {
+  const text = $instruction.value.trim();
+  if (!text && !attachedFiles.length) { showToast(t("toast.typeFirst")); return; }
+  // 実行中でなければ通常送信と同じ
+  if (_loadingCount === 0 && activeJobs.size === 0) { return send(); }
+  pulseSendBtn();
+  pushHistory(text);
+  const finalText = text;   // 割り込みはテキスト指示のみ（添付は通常送信で）
+  addMsg("user", finalText);
+  $instruction.value = ""; $instruction.style.height = "auto";
+  addMsg("system", t("interrupt.switching"));
+  pendingQueue.unshift(finalText);   // 先頭に差し込む＝中断後に必ずこれが走る
+  _interrupting = true;
+  const ids = [...activeJobs.keys()];
+  for (const jobId of ids) {
+    try { await api(`/jobs/${jobId}/cancel`, "POST"); } catch {}
+    const ab = activeJobs.get(jobId);
+    if (ab) ab.abort();
+  }
+  // 中断 → streamJob 終了 → finish() → setLoading(false) → maybeRunNext() が
+  //   先頭(=この指示)を runJob（resume＝文脈保持）で実行する。
+}
+document.getElementById("interruptBtn").onclick = interruptSend;
+
 async function runJob(instruction) {
   setLoading(true);
+  _interrupting = false;   // 新ジョブ開始＝割り込み処理は完了
   document.getElementById("typingDot")?.remove();
   const abort = new AbortController();
 
@@ -636,7 +668,7 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
           addMsg("error", d.text || t("stream.errOccurred"));
           finish(); return;
         } else if (d.type === "canceled") {
-          addMsg("system", t("stream.aborted"));
+          if (!_interrupting) addMsg("system", t("stream.aborted"));
           aiDiv.remove();
           finish(); return;
         }
@@ -682,7 +714,7 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
   } catch (e) {
     if (e.name === "AbortError") {
       aiDiv.remove();
-      addMsg("system", t("stream.disconnected"));
+      if (!_interrupting) addMsg("system", t("stream.disconnected"));
       finish();
     } else {
       // fetch の TypeError(Failed to fetch) 等のネットワーク断 → 即あきらめず再接続
