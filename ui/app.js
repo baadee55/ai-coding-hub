@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "56";
+window.APP_JS_VERSION = "57";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -87,7 +87,7 @@ async function api(path, method = "GET", body = null, signal = null) {
       });
     } catch(e) {
       if (e.name === "AbortError") throw e;
-      lastErr = new Error("ネットワークに接続できません。Wi-Fiを確認してください");
+      lastErr = new Error(t("err.network"));
       if (isLast) throw lastErr;
       await _sleep(API_RETRY_DELAY * (attempt + 1));
       continue;  // 瞬断 → リトライ
@@ -102,7 +102,7 @@ async function api(path, method = "GET", body = null, signal = null) {
     }
     return await _handleApiResponse(res);
   }
-  throw lastErr || new Error("通信に失敗しました");  // 到達しない保険
+  throw lastErr || new Error(t("err.commFailed"));  // 到達しない保険
 }
 
 async function _handleApiResponse(res) {
@@ -113,17 +113,17 @@ async function _handleApiResponse(res) {
       try { needPasskey = JSON.parse(text).need_passkey === true; } catch {}
       if (needPasskey) {
         localStorage.removeItem("passkeyJwt");
-        throw new Error("Passkey ログインが必要です（設定 → 🔓 Passkey でログイン）");
+        throw new Error(t("err.needPasskey"));
       }
       // 期限切れ JWT を握ってた場合は捨てる
       localStorage.removeItem("passkeyJwt");
-      throw new Error("認証エラー（401）。設定 → 🔓 Passkey でログインし直してください");
+      throw new Error(t("err.auth401"));
     }
-    if (res.status === 404) throw new Error("URLが間違っています（404）");
-    if (res.status === 429) throw new Error("リクエストが多すぎます。少し待ってください");
-    if (res.status >= 520 && res.status <= 530) throw new Error("PCのエージェントが停止しています。設定から再起動してください");
-    if (res.status === 502 || res.status === 503 || res.status === 504) throw new Error("PCのエージェントが停止しています。設定から再起動してください");
-    throw new Error(`エラー ${res.status}: ${text.slice(0, 100)}`);
+    if (res.status === 404) throw new Error(t("err.url404"));
+    if (res.status === 429) throw new Error(t("err.tooMany"));
+    if (res.status >= 520 && res.status <= 530) throw new Error(t("err.agentDown"));
+    if (res.status === 502 || res.status === 503 || res.status === 504) throw new Error(t("err.agentDown"));
+    throw new Error(t("err.generic", {status: res.status, text: text.slice(0, 100)}));
   }
   return res.json();
 }
@@ -159,7 +159,7 @@ function showMain()  { $setup.style.display = "none";  $main.style.display = "fl
 document.getElementById("setupSaveBtn").onclick = async () => {
   const url   = document.getElementById("setupUrl").value.trim().replace(/\/+$/, "");
   const token = document.getElementById("setupToken").value.trim();
-  if (!url || !token) { alert("URLとトークンを入力してください"); return; }
+  if (!url || !token) { alert(t("toast.enterUrlToken")); return; }
   saveSettings({ url, token });
   showMain(); await init();
 };
@@ -213,10 +213,10 @@ let _activeIde = null;
 
 function openIdePicker(ide) {
   _activeIde = ide;
-  document.getElementById("idePickerTitle").textContent = IDE_INFO[ide].name + " で開くプロジェクト";
+  document.getElementById("idePickerTitle").textContent = t("ide.openTitle", {name: IDE_INFO[ide].name});
   const $list = document.getElementById("idePickerList");
   if (!projects.length) {
-    $list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">プロジェクトがまだ登録されていません。＋ボタンで追加してください。</div>';
+    $list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0;">${t("list.noProjects")}</div>`;
   } else {
     $list.innerHTML = projects.map(p => `
       <button class="ide-project-item" data-id="${escapeHtml(p.id)}" data-path="${escapeHtml(p.path)}" data-name="${escapeHtml(p.name)}">
@@ -248,14 +248,14 @@ document.getElementById("idePickerList").addEventListener("click", e => {
   window.open(url, "_blank");
   loadConversation();
   closeIdePicker();
-  showToast(`📁 ${proj.name} を ${IDE_INFO[_activeIde].name} で開きました`);
+  showToast(t("ide.opened", {proj: proj.name, ide: IDE_INFO[_activeIde].name}));
 });
 
 // ===== プロジェクト =====
 async function loadProjects() {
   try {
     projects = await api("/projects/");
-    $projSelect.innerHTML = '<option value="">プロジェクトを選択</option>' +
+    $projSelect.innerHTML = `<option value="">${t("proj.select")}</option>` +
       projects.map(p => `<option value="${p.id}" data-path="${p.path}">${p.name}</option>`).join("");
     if (projects.length > 0) {
       // 前回選択を復元。なければ先頭。
@@ -329,19 +329,19 @@ function buildAiMsgEl(text, actions, summary) {
     actDiv.style.cssText = "margin-top:8px;padding:8px;background:rgba(0,0,0,0.3);border-radius:8px;border-left:3px solid var(--muted);";
     const btn = document.createElement("button");
     btn.style.cssText = "background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:0;text-decoration:underline;";
-    btn.textContent = `📋 詳細を見る (${actions.length})`;
+    btn.textContent = t("details.show", {n: actions.length});
     const logDiv = document.createElement("div");
     logDiv.style.cssText = "display:none;margin-top:8px;font-size:11px;color:var(--muted);font-family:monospace;line-height:1.6;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.5);padding:8px;border-radius:6px;";
     logDiv.innerHTML = actions.map(a => `<div>→ ${escapeHtml(String(a))}</div>`).join("");
     btn.onclick = () => {
       const vis = logDiv.style.display === "none";
       logDiv.style.display = vis ? "block" : "none";
-      btn.textContent = vis ? "📋 詳細を隠す" : `📋 詳細を見る (${actions.length})`;
+      btn.textContent = vis ? t("details.hide") : t("details.show", {n: actions.length});
     };
     actDiv.appendChild(btn); actDiv.appendChild(logDiv); d.appendChild(actDiv);
   }
   const ttsBtn = document.createElement("button");
-  ttsBtn.className = "tts-btn"; ttsBtn.textContent = "🔊"; ttsBtn.title = "読み上げ";
+  ttsBtn.className = "tts-btn"; ttsBtn.textContent = "🔊"; ttsBtn.title = t("tts.title");
   ttsBtn.onclick = () => {
     if (ttsBtn.classList.contains("speaking")) { speechSynthesis.cancel(); ttsBtn.classList.remove("speaking"); return; }
     speak(text, ttsBtn);
@@ -399,20 +399,20 @@ async function send() {
   pulseSendBtn();   // 押した合図のポップ（中身がある時だけ＝空打ちでは光らせない）
   const health = await checkHealth();
   if (health === "watchdog") {
-    addMsg("error", "エージェントが停止しています。設定の「🔄 エージェントを再起動」を押してから送信してください。");
+    addMsg("error", t("agentStopped.send"));
     return;
   }
   pushHistory(text);
   // 添付ファイルがあれば先にアップロード → 指示にパスを埋め込む
   let finalText = text;
   if (attachedFiles.length) {
-    addMsg("system", `📎 ${attachedFiles.length} 件を添付中…`);
+    addMsg("system", t("attach.uploading", {n: attachedFiles.length}));
     try {
       const uploaded = await uploadAttached();
       const lines = uploaded.map(u => `- ${u.filename} → ${u.path}`).join("\n");
-      finalText = `${text || "添付ファイルを確認してください。"}\n\n添付ファイル:\n${lines}`;
+      finalText = `${text || t("attach.confirm")}\n\n${t("attach.label")}:\n${lines}`;
     } catch (e) {
-      addMsg("error", "添付アップロード失敗: " + e.message);
+      addMsg("error", t("attach.uploadFail", {msg: e.message}));
       return;
     } finally {
       clearAttachments();
@@ -425,7 +425,7 @@ async function send() {
   // 待ち行列に積んで、現ジョブ完了後に同じセッションで続けて実行する。
   if (_loadingCount > 0 || activeJobs.size > 0) {
     pendingQueue.push(finalText);
-    addMsg("system", `➕ 現在の作業に追加しました（順番待ち ${pendingQueue.length} 件・完了後に続けて実行）`);
+    addMsg("system", t("queue.added", {n: pendingQueue.length}));
     return;
   }
   await runJob(finalText);
@@ -608,8 +608,8 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
         if (typeof d._seq === "number" && d._seq > lastSeq) lastSeq = d._seq;
         if (d.type === "ping") continue;
         if (d.type === "started") {
-          actions.push(`▶ ${d.model || "Claude Code"} 開始`);
-          setLiveLabel("考え中…");
+          actions.push(t("model.started", {model: d.model || "Claude Code"}));
+          setLiveLabel(t("live.thinking"));
           rerender();
         } else if (d.type === "action") {
           actions.push(d.text);
@@ -617,26 +617,26 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
           rerender();
         } else if (d.type === "tool_start") {
           // ツール入力がまとまる前の開始通知。名前だけ live に出す。
-          if (d.name) setLiveLabel("⚙ " + d.name + " 実行中…");
+          if (d.name) setLiveLabel(t("live.running", {name: d.name}));
         } else if (d.type === "tool_use") {
           // 詳細は折りたたみ。表示はサマリ。
           toolResults.push({ name: d.name, input: d.input, id: d.tool_use_id });
         } else if (d.type === "tool_result") {
           const tr = toolResults.find(t => t.id === d.tool_use_id);
           if (tr) tr.result = d.content;
-          setLiveLabel("考え中…");
+          setLiveLabel(t("live.thinking"));
         } else if (d.type === "token") {
           rawText += d.text;
-          setLiveLabel("✍ 出力中…");
+          setLiveLabel(t("live.writing"));
           rerender();
         } else if (d.type === "done") {
           doneData = d; rawText = d.result || rawText;
         } else if (d.type === "error") {
           aiDiv.remove();
-          addMsg("error", d.text || "エラーが発生しました");
+          addMsg("error", d.text || t("stream.errOccurred"));
           finish(); return;
         } else if (d.type === "canceled") {
-          addMsg("system", "⏹ 中断しました");
+          addMsg("system", t("stream.aborted"));
           aiDiv.remove();
           finish(); return;
         }
@@ -648,13 +648,13 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
       return await reconnect("ストリーム終了");
     }
     aiDiv.remove();
-    const finalEl = buildAiMsgEl(rawText || "(出力なし)", actions, doneData?.summary || "");
+    const finalEl = buildAiMsgEl(rawText || t("out.none"), actions, doneData?.summary || "");
     if (toolResults.length) {
       const tr = document.createElement("div");
       tr.style.cssText = "margin-top:8px;padding:8px;background:rgba(0,0,0,0.3);border-radius:8px;border-left:3px solid var(--accent);";
       const btn = document.createElement("button");
       btn.style.cssText = "background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:0;text-decoration:underline;";
-      btn.textContent = `🔧 ツール実行 ${toolResults.length} 件を見る`;
+      btn.textContent = t("tools.show", {n: toolResults.length});
       const body = document.createElement("div");
       body.style.cssText = "display:none;margin-top:8px;font-size:11px;color:var(--muted);font-family:monospace;line-height:1.5;max-height:300px;overflow-y:auto;background:rgba(0,0,0,0.5);padding:8px;border-radius:6px;";
       body.innerHTML = toolResults.map(t => {
@@ -665,7 +665,7 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
       btn.onclick = () => {
         const vis = body.style.display === "none";
         body.style.display = vis ? "block" : "none";
-        btn.textContent = vis ? "🔧 隠す" : `🔧 ツール実行 ${toolResults.length} 件を見る`;
+        btn.textContent = vis ? t("tools.hide") : t("tools.show", {n: toolResults.length});
       };
       tr.appendChild(btn); tr.appendChild(body); finalEl.appendChild(tr);
     }
@@ -682,7 +682,7 @@ async function streamJob(jobId, fromSeq, abort, attempt = 0) {
   } catch (e) {
     if (e.name === "AbortError") {
       aiDiv.remove();
-      addMsg("system", "⏹ 接続を切断しました（ジョブは PC で継続中）");
+      addMsg("system", t("stream.disconnected"));
       finish();
     } else {
       // fetch の TypeError(Failed to fetch) 等のネットワーク断 → 即あきらめず再接続
@@ -704,7 +704,7 @@ document.getElementById("cancelBtn").onclick = async () => {
     if (ab) ab.abort();
   }
   const n = ids.length + hadQueue;
-  if (n) addMsg("system", `⏹ ${n} 件の作業を中断しました`);
+  if (n) addMsg("system", t("abort.nMsg", {n}));
 };
 document.getElementById("sendBtn").onclick = send;
 // Enter キーは「改行のみ」。送信は紙飛行機ボタンだけ。
@@ -726,23 +726,23 @@ $instruction.addEventListener("input", () => {
 
 // ===== Git クイックアクション =====
 async function gitAction(action, commitMsg = "") {
-  if (!selectedProject) { showToast("プロジェクトを選択してください"); return; }
+  if (!selectedProject) { showToast(t("toast.selectProject")); return; }
   const labels = { pull: "↓ Pull", commit: "✓ Commit", push: "↑ Push", status: "≡ Status" };
-  addMsg("system", `${labels[action]} 実行中…`);
+  addMsg("system", t("git.running", {label: labels[action]}));
   try {
     let r;
     if (action === "status") {
       r = await api(`/context/?project_path=${encodeURIComponent(selectedProject.path)}`);
-      addMsg("ai", `**Git Status**\n\`\`\`\n${r.git_status || "(変更なし)"}\n\`\`\`\nブランチ: ${r.branch || "不明"}`);
+      addMsg("ai", `**Git Status**\n\`\`\`\n${r.git_status || t("git.noChanges")}\n\`\`\`\n${t("git.branch")}: ${r.branch || t("git.unknownBranch")}`);
     } else if (action === "pull") {
       r = await api("/context/git-pull", "POST", { project_path: selectedProject.path });
-      addMsg("ai", `↓ Pull 完了\n\`\`\`\n${r.result}\n\`\`\``);
+      addMsg("ai", `${t("git.pullDone")}\n\`\`\`\n${r.result}\n\`\`\``);
     } else if (action === "commit") {
       r = await api("/context/git-commit", "POST", { project_path: selectedProject.path, message: commitMsg });
-      addMsg("ai", `✓ Commit 完了\n\`\`\`\n${r.result}\n\`\`\``);
+      addMsg("ai", `${t("git.commitDone")}\n\`\`\`\n${r.result}\n\`\`\``);
     } else if (action === "push") {
       r = await api("/context/git-push", "POST", { project_path: selectedProject.path });
-      addMsg("ai", `↑ Push 完了\n\`\`\`\n${r.result}\n\`\`\``);
+      addMsg("ai", `${t("git.pushDone")}\n\`\`\`\n${r.result}\n\`\`\``);
     }
   } catch(e) { addMsg("error", e.message); }
 }
@@ -751,7 +751,7 @@ document.getElementById("gitPullBtn").onclick   = () => gitAction("pull");
 document.getElementById("gitStatusBtn").onclick  = () => gitAction("status");
 document.getElementById("gitPushBtn").onclick    = () => gitAction("push");
 document.getElementById("gitCommitBtn").onclick  = async () => {
-  const msg = prompt("コミットメッセージを入力:");
+  const msg = prompt(t("git.commitPrompt"));
   if (msg === null) return;
   await gitAction("commit", msg || "Update");
 };
@@ -761,7 +761,7 @@ let ctxTimer = null;
 document.getElementById("contextBtn").onclick = () => {
   clearTimeout(ctxTimer);
   ctxTimer = setTimeout(async () => {
-    if (!selectedProject) { addMsg("system", "プロジェクトを選んでください"); return; }
+    if (!selectedProject) { addMsg("system", t("toast.selectProject")); return; }
     setLoading(true);
     try {
       const r = await api("/context/summary?project_path=" + encodeURIComponent(selectedProject.path));
@@ -771,7 +771,7 @@ document.getElementById("contextBtn").onclick = () => {
   }, 300);
 };
 document.getElementById("dailyBtn").onclick = async () => {
-  if (!selectedProject) { addMsg("system", "プロジェクトを選んでください"); return; }
+  if (!selectedProject) { addMsg("system", t("toast.selectProject")); return; }
   setLoading(true);
   try {
     const r = await api("/context/daily?project_path=" + encodeURIComponent(selectedProject.path));
@@ -824,18 +824,18 @@ let _favs = JSON.parse(localStorage.getItem("favorites") || "[]");
 function saveFavs() { localStorage.setItem("favorites", JSON.stringify(_favs)); }
 function addCurrentFav() {
   const text = ($instruction.value || "").trim();
-  if (!text) { showToast("入力欄が空です"); return; }
-  if (_favs.includes(text)) { showToast("登録済みです"); return; }
-  _favs = [text, ..._favs].slice(0, 12); saveFavs(); renderFavs(); showToast("⭐ お気に入りに追加");
+  if (!text) { showToast(t("toast.inputEmpty")); return; }
+  if (_favs.includes(text)) { showToast(t("toast.alreadySaved")); return; }
+  _favs = [text, ..._favs].slice(0, 12); saveFavs(); renderFavs(); showToast(t("toast.favAdded"));
 }
 function removeFavAt(i) { _favs.splice(i, 1); saveFavs(); renderFavs(); }
 function editFavAt(i) {
   const cur = _favs[i];
-  const next = prompt("お気に入りを編集", cur);
+  const next = prompt(t("fav.editPrompt"), cur);
   if (next === null) return;            // キャンセル
   const t = next.trim();
   if (!t) { removeFavAt(i); return; }   // 空にしたら削除
-  _favs[i] = t; saveFavs(); renderFavs(); showToast("✏️ 編集しました");
+  _favs[i] = t; saveFavs(); renderFavs(); showToast(window.t("toast.edited"));
 }
 function useFavText(text) {
   $instruction.value = text;
@@ -862,12 +862,12 @@ function renderFavs() {
     const edit = document.createElement("button");
     edit.className = "fav-chip-del";
     edit.textContent = "✏️";
-    edit.title = "編集";
+    edit.title = t("common.edit");
     edit.addEventListener("click", (e) => { e.stopPropagation(); editFavAt(i); });
     const del = document.createElement("button");
     del.className = "fav-chip-del";
     del.textContent = "×";
-    del.title = "削除";
+    del.title = t("common.delete");
     del.addEventListener("click", (e) => { e.stopPropagation(); removeFavAt(i); });
     chip.appendChild(label);
     chip.appendChild(edit);
@@ -876,7 +876,7 @@ function renderFavs() {
   });
   const add = document.createElement("button");
   add.className = "fav-add-btn";
-  add.textContent = _favs.length ? "＋ 現在の入力を追加" : "＋ 現在の入力を追加";
+  add.textContent = t("fav.add");
   add.addEventListener("click", addCurrentFav);
   $p.appendChild(add);
 }
@@ -891,7 +891,7 @@ document.getElementById("favToggleBtn").onclick = () => {
 function renderHist() {
   const $p = document.getElementById("histPanel");
   if (!_hist.length) {
-    $p.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:2px 0;">まだ送信履歴がありません。指示を送ると、ここから再利用できます。</div>`;
+    $p.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:2px 0;">${t("list.noHist")}</div>`;
     return;
   }
   $p.innerHTML = _hist.map(t => {
@@ -929,7 +929,7 @@ if (_modelPillEl) {
     const idx = cycle.indexOf(s.ccModel);
     const next = cycle[(idx + 1) % cycle.length];
     saveSettings({ ccModel: next });
-    showToast(`Claude Code モデル: ${next || "デフォルト"}`);
+    showToast(t("toast.modelSet", {model: next || t("common.defaultModel")}));
     updatePills();
   };
 }
@@ -940,8 +940,8 @@ function updateModelPill() { updatePills(); }
 function speak(text, btn) {
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, "（コード）").replace(/[#*`]/g, ""));
-  utt.lang = "ja-JP"; utt.rate = 1.1;
+  const utt = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, t("tts.code")).replace(/[#*`]/g, ""));
+  utt.lang = (window.getLang && getLang() === "en") ? "en-US" : "ja-JP"; utt.rate = 1.1;
   if (btn) { btn.classList.add("speaking"); utt.onend = () => btn.classList.remove("speaking"); }
   speechSynthesis.speak(utt);
 }
@@ -954,7 +954,7 @@ async function requestNotificationPermission() {
 function notifyComplete(summary) {
   if (!("Notification" in window)) return;   // iOS Safari 非PWA 等。未ガードだと完了時に投げ→誤再接続
   if (document.visibilityState !== "hidden" || Notification.permission !== "granted") return;
-  new Notification("AI hub β — 処理完了", { body: summary || "指示が完了しました", icon: "/ui/icon.svg" });
+  new Notification(t("notif.title"), { body: summary || t("notif.body"), icon: "/ui/icon.svg" });
 }
 
 // ===== ユーティリティ =====
@@ -999,10 +999,10 @@ function switchProject(dir) {
 // ===== プルリフレッシュ =====
 async function doRefresh() {
   const $pull = document.getElementById("pullIndicator");
-  $pull.textContent = "↻ 更新中…"; $pull.classList.add("visible");
+  $pull.textContent = t("pull.refreshing"); $pull.classList.add("visible");
   await checkHealth(); await loadProjects();
-  $pull.classList.remove("visible"); $pull.textContent = "↻ 離して更新";
-  showToast("✓ 更新しました");
+  $pull.classList.remove("visible"); $pull.textContent = t("pull.release");
+  showToast(t("toast.updated"));
 }
 
 // ===== ジェスチャー =====
@@ -1017,7 +1017,7 @@ async function doRefresh() {
     if (msg) longPressTimer = setTimeout(() => {
       const clone = msg.cloneNode(true);
       clone.querySelectorAll("div[style],button").forEach(el => el.remove());
-      navigator.clipboard?.writeText(clone.textContent.trim()).then(() => showToast("📋 コピーしました"));
+      navigator.clipboard?.writeText(clone.textContent.trim()).then(() => showToast(t("toast.copied")));
     }, 500);
   }, { passive: true });
 
@@ -1142,19 +1142,19 @@ document.getElementById("projCancel").onclick      = closeProjectDrawer;
 document.getElementById("projSave").onclick = async () => {
   const name = document.getElementById("projName").value.trim();
   const path = document.getElementById("projPath").value.trim();
-  if (!name || !path) { alert("名前とパスを入力してください"); return; }
+  if (!name || !path) { alert(t("toast.enterNamePath")); return; }
   try {
     await api("/projects/", "POST", { name, path, description: "" });
     closeProjectDrawer();
     document.getElementById("projName").value = ""; document.getElementById("projPath").value = "";
-    await loadProjects(); addMsg("system", `「${name}」を追加しました`);
+    await loadProjects(); addMsg("system", t("proj.added", {name}));
   } catch(e) { addMsg("error", e.message); }
 };
 
 // ===== ファイルツリー =====
 let _treePath = [];
 async function openFileTree() {
-  if (!selectedProject) { showToast("プロジェクトを選択してください"); return; }
+  if (!selectedProject) { showToast(t("toast.selectProject")); return; }
   _treePath = [selectedProject.path];
   document.getElementById("fileTreeDrawer").classList.add("open");
   document.getElementById("fileTreeOverlay").classList.add("open");
@@ -1163,7 +1163,7 @@ async function openFileTree() {
 async function loadTreeDir(path) {
   document.getElementById("fileTreeTitle").textContent = path.split(/[\\/]/).pop();
   const $c = document.getElementById("fileTreeContent");
-  $c.innerHTML = `<div style="color:var(--muted);font-size:13px;">読み込み中…</div>`;
+  $c.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t("common.loading")}</div>`;
   try {
     const result = await api("/command/", "POST", {
       instruction: `list_files ツールで "${path}" のファイル一覧を取得して。[フォルダ] と [ファイル] プレフィックスで列挙し、それ以外は出力しないで。`,
@@ -1174,7 +1174,7 @@ async function loadTreeDir(path) {
     $c.innerHTML = "";
     if (_treePath.length > 1) {
       const back = document.createElement("div");
-      back.className = "tree-item folder"; back.textContent = "← 上の階層へ";
+      back.className = "tree-item folder"; back.textContent = t("file.upTitle");
       back.onclick = () => { _treePath.pop(); loadTreeDir(_treePath[_treePath.length - 1]); };
       $c.appendChild(back);
     }
@@ -1187,11 +1187,11 @@ async function loadTreeDir(path) {
       item.onclick = () => {
         const full = path.replace(/[\\/]+$/, "") + "\\" + name;
         if (isDir) { _treePath.push(full); loadTreeDir(full); }
-        else { closeFileTree(); $instruction.value = `"${full}" の内容を表示して`; $instruction.dispatchEvent(new Event("input")); }
+        else { closeFileTree(); $instruction.value = t("file.showContent", {path: full}); $instruction.dispatchEvent(new Event("input")); }
       };
       $c.appendChild(item);
     });
-    if (!lines.length) $c.innerHTML = `<div style="color:var(--muted);font-size:13px;">ファイルがありません</div>`;
+    if (!lines.length) $c.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t("list.noFiles")}</div>`;
   } catch(e) { $c.innerHTML = `<div style="color:var(--red);font-size:13px;">${e.message}</div>`; }
 }
 function closeFileTree() {
@@ -1238,7 +1238,7 @@ document.getElementById("installPromptBtn").onclick = async () => {
 
 // ===== ワンクリック更新（SW・キャッシュを捨てて最新版を取り直す） =====
 async function forceUpdateApp() {
-  showToast("🔄 最新版を取得中…");
+  showToast(t("toast.updating"));
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -1327,13 +1327,13 @@ if (!SR || _isIOS) {
 
   recognition.onerror = e => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      showToast("🎤 マイクの使用が許可されていません");
+      showToast(t("mic.notAllowed"));
     } else if (e.error === "no-speech") {
-      showToast("🎤 音声が検出できませんでした");
+      showToast(t("mic.noSpeech"));
     } else if (e.error === "audio-capture") {
-      showToast("🎤 マイクが見つかりません");
+      showToast(t("mic.noMic"));
     } else if (e.error !== "aborted") {
-      showToast("🎤 音声入力エラー: " + e.error);
+      showToast(t("mic.err", {err: e.error}));
     }
     resetMicUI();
   };
@@ -1351,7 +1351,7 @@ function resetMicUI() {
   micActive = false;
   $micBtn.classList.remove("active");
   $micBtn.textContent = "🎤";
-  $micBtn.title = "音声入力";
+  $micBtn.title = t("mic.title");
 }
 
 function startMic() {
@@ -1361,9 +1361,9 @@ function startMic() {
   micActive = true;
   $micBtn.classList.add("active");
   $micBtn.textContent = "⏺";
-  $micBtn.title = "停止";
+  $micBtn.title = t("mic.stop");
   try { recognition.start(); }
-  catch { resetMicUI(); showToast("🎤 起動できませんでした"); }
+  catch { resetMicUI(); showToast(t("toast.micStartFail")); }
 }
 
 function stopMic() {
@@ -1373,34 +1373,25 @@ function stopMic() {
 }
 
 $micBtn.onclick = () => {
-  if (!recognition) { showToast("このブラウザは音声入力に対応していません"); return; }
+  if (!recognition) { showToast(t("toast.micUnsupported")); return; }
   if (micActive) stopMic();
   else startMic();
 };
 
 // ===== 🆕 新しい会話 =====
 document.getElementById("newConvBtn").onclick = async () => {
-  if (!selectedProject) { showToast("プロジェクトを選択してください"); return; }
+  if (!selectedProject) { showToast(t("toast.selectProject")); return; }
   try { await api("/jobs/sessions/clear", "POST", { project_path: selectedProject.path }); } catch {}
   const projKey = selectedProject.id;
   sessionStorage.setItem("forceNewConv_" + projKey, "1");
-  addMsg("system", "🆕 新しい会話を開始します（前の文脈は切れます）");
+  addMsg("system", t("newConv.msg"));
 };
 
 // ===== 📝 タスク化 =====
 document.getElementById("taskBtn").onclick = () => {
   const cur = $instruction.value.trim();
-  if (!cur) { showToast("先に指示を入力してください"); return; }
-  $instruction.value = `次のタスクを実行してください。
-
-要件:
-${cur}
-
-進め方:
-1. まず TODO に分解
-2. 各 TODO を順に実行（必要なファイル読込・編集・コマンド実行を含む）
-3. 完了後、何をどう変えたかを Markdown チェックリストで日本語報告
-4. テストや動作確認が可能なら最後に実施`;
+  if (!cur) { showToast(t("toast.typeFirst")); return; }
+  $instruction.value = t("task.prompt", {req: cur});
   $instruction.dispatchEvent(new Event("input"));
 };
 
@@ -1430,7 +1421,7 @@ document.getElementById("attachBtn").onclick = () => document.getElementById("at
 document.getElementById("attachInput").addEventListener("change", async e => {
   const files = [...e.target.files];
   for (const f of files) {
-    if (f.size > 20 * 1024 * 1024) { showToast(`${f.name} は 20MB を超えています`); continue; }
+    if (f.size > 20 * 1024 * 1024) { showToast(t("toast.tooBig", {name: f.name})); continue; }
     const dataUrl = await new Promise((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(r.result);
@@ -1454,11 +1445,11 @@ function closeJobsDrawer() {
 }
 async function refreshJobs() {
   const $l = document.getElementById("jobsList");
-  $l.innerHTML = '<div style="color:var(--muted);font-size:13px;">読み込み中…</div>';
+  $l.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t("common.loading")}</div>`;
   try {
     const path = selectedProject?.path || "";
     const jobs = await api("/jobs/" + (path ? `?project_path=${encodeURIComponent(path)}` : ""));
-    if (!jobs.length) { $l.innerHTML = '<div style="color:var(--muted);font-size:13px;">ジョブはありません</div>'; return; }
+    if (!jobs.length) { $l.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t("list.noJobs")}</div>`; return; }
     $l.innerHTML = jobs.map(j => {
       const stColor = j.status === "running" ? "var(--accent)" : j.status === "done" ? "var(--green)" : j.status === "error" ? "var(--red)" : "var(--muted)";
       const stEmoji = j.status === "running" ? "▶" : j.status === "done" ? "✓" : j.status === "error" ? "✗" : j.status === "canceled" ? "⏹" : "…";
@@ -1484,7 +1475,7 @@ document.getElementById("jobsList").addEventListener("click", async e => {
   const jobId = item.dataset.job;
   closeJobsDrawer();
   if (item.dataset.status === "running") {
-    addMsg("system", `▶ ジョブ ${jobId} に再接続します…`);
+    addMsg("system", t("job.reconnect", {id: jobId}));
     setLoading(true);
     lastJobId = jobId;
     const abort = new AbortController();
@@ -1504,8 +1495,8 @@ document.getElementById("jobsList").addEventListener("click", async e => {
         else if (ev.type === "tool_result") { const t = trs.find(x => x.id === ev.tool_use_id); if (t) t.result = ev.content; }
         else if (ev.type === "done") text = ev.result || text;
       }
-      addMsg("system", `📜 ジョブ ${jobId} を復元`);
-      const el = buildAiMsgEl(text || "(空)", acts, j.summary || "");
+      addMsg("system", t("job.restored", {id: jobId}));
+      const el = buildAiMsgEl(text || t("job.empty"), acts, j.summary || "");
       $messages.appendChild(el); $messages.scrollTop = $messages.scrollHeight;
     } catch (e) { addMsg("error", e.message); }
   }
@@ -1529,7 +1520,7 @@ async function refreshProcs() {
   const $l = document.getElementById("procsList");
   try {
     const procs = await api("/processes/");
-    if (!procs.length) { $l.innerHTML = '<div style="color:var(--muted);font-size:13px;">実行中のプロセスはありません</div>'; return; }
+    if (!procs.length) { $l.innerHTML = `<div style="color:var(--muted);font-size:13px;">${t("list.noProcs")}</div>`; return; }
     $l.innerHTML = procs.map(p => {
       const stColor = p.status === "running" ? "var(--green)" : p.status === "stopped" ? "var(--yellow)" : "var(--muted)";
       return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;">
@@ -1539,8 +1530,8 @@ async function refreshProcs() {
         </div>
         <div style="font-size:11px;color:var(--muted);font-family:monospace;word-break:break-all;">${escapeHtml(p.command)}</div>
         <div style="display:flex;gap:6px;">
-          <button class="btn-sm" onclick="tailProc('${p.id}','${escapeHtml(p.name)}')">📜 ログ</button>
-          ${p.status === "running" ? `<button class="btn-sm" style="color:var(--red);" onclick="stopProc('${p.id}')">⏹ 停止</button>` : ""}
+          <button class="btn-sm" onclick="tailProc('${p.id}','${escapeHtml(p.name)}')">${t("proc.logBtn")}</button>
+          ${p.status === "running" ? `<button class="btn-sm" style="color:var(--red);" onclick="stopProc('${p.id}')">${t("proc.stopBtn")}</button>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -1550,7 +1541,7 @@ async function tailProc(pid, name) {
   if (_procAbort) _procAbort.abort();
   _activeProcId = pid;
   document.getElementById("procTail").style.display = "flex";
-  document.getElementById("procTailTitle").textContent = name + " のログ";
+  document.getElementById("procTailTitle").textContent = t("proc.logTitle", {name});
   const $c = document.getElementById("procTailContent");
   $c.textContent = "";
   _procAbort = new AbortController();
@@ -1580,10 +1571,10 @@ async function tailProc(pid, name) {
         } catch {}
       }
     }
-  } catch (e) { if (e.name !== "AbortError") $c.textContent += "\n[エラー] " + e.message; }
+  } catch (e) { if (e.name !== "AbortError") $c.textContent += "\n" + t("proc.errPrefix", {msg: e.message}); }
 }
 async function stopProc(pid) {
-  try { await api(`/processes/${pid}/stop`, "POST"); showToast("⏹ 停止しました"); await refreshProcs(); }
+  try { await api(`/processes/${pid}/stop`, "POST"); showToast(t("toast.procStopped")); await refreshProcs(); }
   catch (e) { showToast(e.message); }
 }
 document.getElementById("procsBtn").onclick   = openProcsDrawer;
@@ -1595,8 +1586,8 @@ document.getElementById("procTailClose").onclick = () => {
 };
 document.getElementById("procRunBtn").onclick = async () => {
   const cmd = document.getElementById("procCmd").value.trim();
-  if (!cmd) { showToast("コマンドを入力してください"); return; }
-  if (!selectedProject) { showToast("プロジェクトを選択してください"); return; }
+  if (!cmd) { showToast(t("toast.enterCommand")); return; }
+  if (!selectedProject) { showToast(t("toast.selectProject")); return; }
   try {
     const p = await api("/processes/run", "POST", {
       name: cmd.split(/\s+/).slice(0, 2).join(" "),
@@ -1604,7 +1595,7 @@ document.getElementById("procRunBtn").onclick = async () => {
       cwd: selectedProject.path,
     });
     document.getElementById("procCmd").value = "";
-    showToast(`▶ 起動: ${p.name}`);
+    showToast(t("toast.procStarted", {name: p.name}));
     await refreshProcs();
     tailProc(p.id, p.name);
   } catch (e) { showToast(e.message); }
@@ -1637,7 +1628,7 @@ async function passkeyRefreshUI() {
     const pending = sessionStorage.getItem("pendingRegisterToken");
 
     if (pending) {
-      $st.innerHTML = `<span style="color:var(--yellow);">📱 登録トークンを受信しました。下のボタンを押して登録してください。</span>`;
+      $st.innerHTML = t("pk.tokenReceived");
       $login.style.display = "none";
       $regPc.style.display = "";
       $add.style.display = "none";
@@ -1645,7 +1636,7 @@ async function passkeyRefreshUI() {
       return;
     }
     if (!st.passkey_registered) {
-      $st.innerHTML = "Passkey 未登録（PC のローカル http://127.0.0.1:8765/ui/ で「📱 別の端末を追加」してください）";
+      $st.innerHTML = t("pk.notRegistered");
       $login.style.display = "none";
       $regPc.style.display = "none";
       $add.style.display = "";
@@ -1704,10 +1695,10 @@ document.getElementById("passkeyLoginBtn").onclick = async () => {
     };
     const res = await api("/auth/login/finish", "POST", { session_id: begin.session_id, credential });
     localStorage.setItem("passkeyJwt", res.jwt);
-    showToast(`✅ ログイン成功: ${res.name || ""}`);
+    showToast(t("toast.loginOk", {name: res.name || ""}));
     passkeyRefreshUI();
   } catch (e) {
-    addMsg("error", "Passkey ログイン失敗: " + e.message);
+    addMsg("error", t("pk.loginFail", {msg: e.message}));
   }
 };
 
@@ -1721,7 +1712,7 @@ document.getElementById("passkeyAddBtn").onclick = async () => {
     await QRCode.toCanvas(canvas, url, { width: 280, margin: 2 });
     document.getElementById("qrModal").style.display = "flex";
   } catch (e) {
-    addMsg("error", e.message + "（PC 上 http://127.0.0.1:8765/ui/ で実行してください）");
+    addMsg("error", t("pk.runOnPc", {msg: e.message}));
   }
 };
 
@@ -1729,15 +1720,15 @@ document.getElementById("passkeyAddBtn").onclick = async () => {
 async function doPasskeyRegister(tok, deviceName) {
   // 環境チェック（アプリ内ブラウザ / WebAuthn 非対応の早期検出）
   if (!window.PublicKeyCredential || !navigator.credentials || typeof navigator.credentials.create !== "function") {
-    throw new Error("このブラウザは Passkey 非対応です。Chrome / Safari で開いてください（LINE/Twitter のアプリ内ブラウザでは動きません）");
+    throw new Error(t("pk.unsupported"));
   }
   if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
     const ok = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
     if (!ok) {
-      throw new Error("この端末で生体/PIN 認証が使えません。Android: 設定→セキュリティ→画面ロック を設定してください");
+      throw new Error(t("pk.noBiometric"));
     }
   }
-  const name = deviceName || (navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows/i)?.[0]) || "ブラウザ";
+  const name = deviceName || (navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows/i)?.[0]) || t("pk.defaultDevice");
   const begin = await api("/auth/register/begin", "POST", { register_token: tok });
   const opts = begin.options;
   opts.challenge = b64uToArr(opts.challenge);
@@ -1747,12 +1738,12 @@ async function doPasskeyRegister(tok, deviceName) {
   try {
     cred = await navigator.credentials.create({ publicKey: opts });
   } catch (e) {
-    if (e.name === "NotAllowedError") throw new Error("認証がキャンセルされた or タイムアウト");
-    if (e.name === "SecurityError") throw new Error("セキュリティエラー（HTTPS / ドメイン不一致）: " + e.message);
-    if (e.name === "InvalidStateError") throw new Error("この端末は既に登録済みかも");
+    if (e.name === "NotAllowedError") throw new Error(t("pk.cancelled"));
+    if (e.name === "SecurityError") throw new Error(t("pk.securityErr", {msg: e.message}));
+    if (e.name === "InvalidStateError") throw new Error(t("pk.alreadyReg"));
     throw new Error(`[${e.name}] ${e.message}`);
   }
-  if (!cred) throw new Error("credentials.create が null を返した（アプリ内ブラウザの可能性大）");
+  if (!cred) throw new Error(t("pk.credNull"));
   const credential = {
     id: cred.id,
     rawId: arrToB64u(cred.rawId),
@@ -1771,13 +1762,13 @@ async function doPasskeyRegister(tok, deviceName) {
 
 document.getElementById("passkeyRegisterPcBtn").onclick = async () => {
   const tok = sessionStorage.getItem("pendingRegisterToken");
-  if (!tok) { showToast("登録トークンがありません"); return; }
+  if (!tok) { showToast(t("toast.noRegToken")); return; }
   try {
     await doPasskeyRegister(tok);
-    showToast("✅ Passkey 登録完了");
+    showToast(t("pk.regDone"));
     passkeyRefreshUI();
   } catch (e) {
-    addMsg("error", "Passkey 登録失敗: " + e.message);
+    addMsg("error", t("pk.regFail", {msg: e.message}));
   }
 };
 
@@ -1792,20 +1783,20 @@ function showAutoRegisterModal() {
     overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;color:white;";
     overlay.innerHTML = `
       <div style="font-size:56px;margin-bottom:16px;">🔐</div>
-      <h2 style="font-size:22px;margin:0 0 8px;">この端末を Passkey 登録</h2>
+      <h2 style="font-size:22px;margin:0 0 8px;">${t("pk.regTitle")}</h2>
       <p style="opacity:.7;margin:0 0 32px;max-width:320px;font-size:14px;">
-        下のボタンをタップすると顔/指紋認証が出ます。承認すれば登録完了です。
+        ${t("pk.autoDesc")}
       </p>
       <button id="passkeyAutoGoBtn" style="
         background:#6c63ff;color:white;border:0;font-size:17px;font-weight:600;
         padding:18px 40px;border-radius:14px;cursor:pointer;min-width:240px;
         box-shadow:0 4px 16px rgba(108,99,255,.4);">
-        🔓 Passkey 登録する
+        ${t("pk.regBtn")}
       </button>
       <button id="passkeyAutoCancelBtn" style="
         background:transparent;color:white;border:1px solid rgba(255,255,255,.3);
         font-size:14px;padding:12px 24px;border-radius:10px;margin-top:16px;cursor:pointer;">
-        後で
+        ${t("common.later")}
       </button>
       <div id="passkeyAutoStatus" style="margin-top:24px;font-size:13px;opacity:.7;min-height:20px;"></div>
     `;
@@ -1814,13 +1805,13 @@ function showAutoRegisterModal() {
       const $s = document.getElementById("passkeyAutoStatus");
       const $b = document.getElementById("passkeyAutoGoBtn");
       $b.disabled = true; $b.style.opacity = ".6";
-      $s.textContent = "認証ダイアログを表示中…";
+      $s.textContent = t("pk.authDialog");
       try {
         await doPasskeyRegister(tok);
-        $s.innerHTML = "<span style='color:#4ade80;font-weight:600;'>✅ 登録完了</span>";
+        $s.innerHTML = "<span style='color:#4ade80;font-weight:600;'>" + t("pk.regComplete") + "</span>";
         setTimeout(() => { overlay.remove(); passkeyRefreshUI(); checkHealth(); loadProjects(); }, 1200);
       } catch (e) {
-        $s.innerHTML = `<span style="color:#f87171;">失敗: ${escapeHtml(e.message)}</span><br><span style="opacity:.7;">PC で新しい QR を発行してやり直してください</span>`;
+        $s.innerHTML = `<span style="color:#f87171;">${t("pk.autoFail", {msg: escapeHtml(e.message)})}</span><br><span style="opacity:.7;">${t("pk.autoFailHint")}</span>`;
         $b.disabled = false; $b.style.opacity = "1";
       }
     };

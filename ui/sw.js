@@ -1,7 +1,7 @@
 // CACHE_KEY は index.html の APP_VERSION と揃える（UI 更新時に両方上げる）。
 // 新 CACHE_KEY になると activate で旧キャッシュを全削除し、確実に最新を配る。
 const STATIC = ["/ui/", "/ui/index.html", "/ui/app.js", "/ui/i18n.js", "/ui/manifest.json", "/ui/icon.svg"];
-const CACHE_KEY = "ai-hub-static-v56";
+const CACHE_KEY = "ai-hub-static-v57";
 const API_PATTERNS = ["/command", "/projects", "/context", "/health", "/restart", "/start", "/pause", "/resume", "/shutdown", "/stream", "/jobs", "/processes", "/uploads", "/auth"];
 
 self.addEventListener("install", (e) => {
