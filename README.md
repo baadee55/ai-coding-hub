@@ -11,6 +11,18 @@
 
 ---
 
+## 📱 スクリーンショット / Screenshots
+
+<p align="center">
+  <img src="assets/screenshots/main-en.png" width="250" alt="Main screen — connect, instruct, git bar">
+  &nbsp;&nbsp;
+  <img src="assets/screenshots/help-en.png" width="250" alt="Built-in help / button reference">
+</p>
+
+> 実機 Android（PWA）。UI は 🌐 ボタンで **日本語 / English** を切替（端末の言語も自動判定）。
+
+---
+
 ## ⚡ 30秒で始める — AIエージェントに丸投げ
 
 clone して、**お使いの AI コーディングエージェント（Claude Code / Codex / Gemini / Antigravity 等）にこの呪文を貼るだけ**:
