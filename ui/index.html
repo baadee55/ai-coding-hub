@@ -13,7 +13,7 @@
   <title>AI hub β</title>
   <!-- アプリ版数。UIを変えたらここを上げる。app.js?v / sw.js?v が新URLになり
        Cloudflareのエッジキャッシュを貫通して最新が届く。index.html自体は no-store。 -->
-  <script>window.APP_VERSION = "55";</script>
+  <script>window.APP_VERSION = "56";</script>
   <link rel="manifest" href="/ui/manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
@@ -23,7 +23,7 @@
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <!-- 軽量 i18n（EN/JA 切替）。?v は APP_VERSION と揃える（三点同期の対象に準じる） -->
-  <script src="/ui/i18n.js?v=55"></script>
+  <script src="/ui/i18n.js?v=56"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
@@ -49,13 +49,15 @@
 
     /* ===== ヘッダー ===== */
     .header {
-      padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; display: flex; align-items: center; gap: 8px;
       border-bottom: 1px solid var(--border); background: var(--card); flex-shrink: 0;
     }
-    /* min-width:0 + nowrap で、長い英語でもタイトルが縦折れせず副題は…で省略（崩れ防止） */
-    .header-title { font-size: 17px; font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; }
-    .header-sub { font-size: 10px; color: var(--muted); display: block; font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
-    .status-pill { flex-shrink: 0; }
+    /* min-width:0 + nowrap + overflow:hidden で、長い英語でもタイトルが縦折れせず
+       横にも溢れず副題は…で省略。狭い画面ではタイトルが先に縮み、アイコンは死守する。 */
+    .header-title { font-size: 17px; font-weight: 700; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+    .header-sub { font-size: 10px; color: var(--muted); display: block; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-pill { flex-shrink: 0; max-width: 40vw; overflow: hidden; }
+    .header .icon-btn { flex-shrink: 0; }
     .status-pill {
       display: flex; align-items: center; gap: 5px; font-size: 11px;
       background: var(--bg); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border);
