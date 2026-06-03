@@ -8,10 +8,10 @@ root="$(git rev-parse --show-toplevel)"
 remote_url="$2"
 
 # --- アカウント/リポ取り違えガード ---------------------------------------
-# このリポは baadee55/ai-coding-hub（公開）/ cnpstorys/ai-coding-hub（private予備）専用。
+# このリポは ai-coding-hub 専用（公開先 baadee55 / private予備の2リモートのみ）。
 # 別アカ・別プロジェクトの repo へ誤 push するのを防ぐ。
 case "$remote_url" in
-  *ai-coding-hub*) : ;;  # OK（baadee55 or cnpstorys の ai-coding-hub）
+  *ai-coding-hub*) : ;;  # OK（ai-coding-hub の repo なら許可）
   *)
     echo "[BLOCKED] push 先が ai-coding-hub ではありません: $remote_url" >&2
     echo "          アカウント/リポ取り違えの可能性。git remote -v を確認してください。" >&2
