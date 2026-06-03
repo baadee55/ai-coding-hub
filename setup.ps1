@@ -105,6 +105,15 @@ if (-not (Test-Path $cfgFile)) {
     Write-Host "  既存 config.json を保持。" -ForegroundColor Yellow
 }
 
+# --- 公開前ゲート（pre-push シークレットスキャン）を有効化 -------------
+Write-Host "[*] 公開前ゲート（pre-push secret-scan）を有効化..." -ForegroundColor Cyan
+if (Test-Path (Join-Path $root ".git")) {
+    & git -C $root config core.hooksPath .githooks
+    Write-Host "  core.hooksPath=.githooks 設定。push 時に秘密/個人情報を自動検査して止めます。" -ForegroundColor Green
+} else {
+    Write-Host "  （git リポジトリでないためスキップ）" -ForegroundColor Yellow
+}
+
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host " セットアップ完了。次は start-all.ps1 を実行（またはデスクトップアイコン）。" -ForegroundColor Green
 Write-Host " 端末追加(QR)は PC ローカルから http://127.0.0.1:8765/ui/ を開く。" -ForegroundColor Green

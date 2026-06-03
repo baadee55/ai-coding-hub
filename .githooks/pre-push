@@ -1,0 +1,29 @@
+#!/bin/sh
+# =========================================================================
+# 公開前ゲート（pre-push）: push されるツリーに秘密/個人情報があれば push を止める。
+# 有効化: git config core.hooksPath .githooks   （setup.ps1 が自動設定）
+# 一時的にどうしても回避したい時のみ: git push --no-verify （非推奨・自己責任）
+# =========================================================================
+root="$(git rev-parse --show-toplevel)"
+py="$(command -v python 2>/dev/null || command -v python3 2>/dev/null)"
+if [ -z "$py" ]; then
+  echo "pre-push: python not found -> aborting push for safety." >&2
+  exit 1
+fi
+
+fail=0
+while read local_ref local_sha remote_ref remote_sha; do
+  # ブランチ削除(全0 sha)はスキップ
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+  echo "[secret-scan] scanning $local_ref ..." >&2
+  "$py" "$root/scripts/secret-scan.py" "$local_sha" >&2 || fail=1
+done
+
+if [ "$fail" != "0" ]; then
+  echo "" >&2
+  echo "[BLOCKED] push aborted: possible secret / personal info detected (above)." >&2
+  echo "          It must NOT reach the public repo. Fix it, then push again." >&2
+  exit 1
+fi
+echo "[secret-scan] OK - no secrets detected." >&2
+exit 0
