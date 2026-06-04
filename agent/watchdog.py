@@ -177,6 +177,55 @@ async def proxy(path: str, request: Request):
         return JSONResponse({"detail": f"プロキシエラー: {e}"}, status_code=502)
 
 
+def _loopback_sockets(port: int):
+    """ループバックの IPv4(127.0.0.1) と IPv6(::1) の両方で listen する socket を作る。
+
+    なぜ両方か: cloudflared・ブラウザ・各種プロキシは `localhost` を **IPv6(::1) 優先**で
+    解決することが多い。IPv4 だけで listen していると「ループバックなのに接続拒否」になり、
+    トンネルが **502** を返す（OS や名前解決順に依存して突然壊れる質の悪い不具合）。
+    両方バインドすれば `127.0.0.1` でも `localhost`/`::1` でも確実に繋がる。
+
+    セキュリティ: バインド先は **ループバックのみ**（127.0.0.1 / ::1）で、公開IF(0.0.0.0 / ::)
+    には一切出さない。よって「watchdog はループバックのみ listen ＋ REMOTE_MARKER_HEADER
+    でリモート判定」という安全モデルは不変（::1 からのローカル直アクセスも 127.0.0.1 と同様、
+    cf-connecting-ip が無い＝ローカル特権として正しく扱われる）。
+    """
+    import socket
+    specs = [
+        (socket.AF_INET, "127.0.0.1"),
+        (socket.AF_INET6, "::1"),
+    ]
+    socks = []
+    for family, host in specs:
+        try:
+            s = socket.socket(family, socket.SOCK_STREAM)
+            if family == socket.AF_INET6:
+                # ::1 専用に固定し、デュアルスタックでワイルドカード化されるのを防ぐ
+                try:
+                    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                except (AttributeError, OSError):
+                    pass
+            # Windows の SO_REUSEADDR は他プロセスによる横取りを許す挙動なので付けない
+            # （asyncio も Windows では付けない）。POSIX では TIME_WAIT 再利用のため付ける。
+            if os.name != "nt":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            s.listen(128)
+            socks.append(s)
+        except OSError as e:
+            # 例: IPv6 が無効な環境では ::1 バインドが失敗する → IPv4 だけで続行する
+            print(f"[watchdog] skip listen {host}:{port}: {e}", flush=True)
+    return socks
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("watchdog:app", host="127.0.0.1", port=8765, reload=False, log_level="info")
+    PORT = 8765
+    socks = _loopback_sockets(PORT)
+    if not socks:
+        raise SystemExit(f"ポート {PORT} を loopback でバインドできませんでした")
+    addrs = "+".join(sorted({s.getsockname()[0] for s in socks}))
+    print(f"[watchdog] listening on {addrs} :{PORT} (IPv4/IPv6 loopback)", flush=True)
+    config = uvicorn.Config("watchdog:app", reload=False, log_level="info")
+    server = uvicorn.Server(config)
+    server.run(sockets=socks)
