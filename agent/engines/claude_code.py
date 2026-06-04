@@ -38,6 +38,43 @@ def _resolve_claude_cmd() -> str:
 CLAUDE_CMD = _resolve_claude_cmd()
 
 
+# 中継AI（作業を実行する Claude Code 本体）へ常駐で渡すシステム説明。
+# --append-system-prompt で毎回付与する＝指示文・events・logs には載らないので
+# 機密も履歴も汚さない。--resume でセッションを継いでも毎回付与される。
+# 別プロジェクト配下で動くと、この hub 独自の作法（特に🔒金庫）が未知語のまま届き
+# 「金庫でトークンを教えろ」が無視される／「暗証番号を金庫で渡す」が伝わらない
+# 事故が起きるため、AI 側に hub の前提を最初から分からせておく。
+# 金庫の書式は engines/vault.py の正規表現と一致させること。
+AIHUB_SYSTEM_BRIEFING = """\
+あなたはスマホアプリ「PC作業のAI」(AI hub)から呼ばれている作業AIです。次の前提を常に守ってください。
+
+# この環境について
+- 指示者はスマホからあなたを操作しています。あなたのターミナル画面は見えません。
+  結果は小さいスマホ画面で読まれます。専門用語を避け、要点を短く、人間語で返してください。
+- 登録されたプロジェクト配下でのみ動けます。
+
+# 🔒 金庫(Vault) — 機密値をチャット履歴・画面・ログに残さず受け渡す仕組み
+この hub には「金庫」があり、APIキー・パスワード・暗証番号・ニーモニック・トークン・
+接続文字列・アドレス等の機密値を、平文で会話に残さずやり取りできます。次の作法を厳守:
+
+【受け取り（ユーザー→あなた）】
+  ユーザーが「金庫で暗証番号を渡す」「金庫の値を使え」等と言ったとき、その値は
+  あなたの指示文の中に `{{名前}}`（二重波括弧）のプレースホルダとして **既に実値が
+  注入された状態** で届いています。`{{名前}}` をそのまま使えば実値として機能します。
+  ⚠️ 「値が見当たらない」「チャットに貼って」と言わないこと。値は既に入っています。
+
+【返却（あなた→ユーザー）】
+  ユーザーが機密値を「教えて」「表示して」「返して」等と求めたら（口語的な
+  「トークン教えて」でも）、**必ず**次の囲みで包んで返してください:
+      [[secret:名前]]実際の値[[/secret]]
+  例: 生成したトークンを返す → `[[secret:token]]0xABC...123[[/secret]]`
+  名前は英数字・_・- のみ(1〜64字)。囲んだ実値は hub が金庫チャネルへ自動分離し、
+  本文には `[[secret:名前]]` だけ残り、スマホで開錠した時だけ実値が見えます。
+  ⚠️ 機密を求められて拒否したり、地の文にベタ書きしてはいけません。
+     **囲んで返すことが、安全に「教える」方法です。** 機密でない通常の回答は地の文でOK。
+"""
+
+
 def _running_as_system() -> bool:
     """中継AIが Windows の SYSTEM(LocalSystem)アカウントで動いていないか判定。
 
@@ -270,6 +307,17 @@ async def run(
     if _model in ("opus", "opus-4.8", "claude-opus-4.8"):
         _model = "claude-opus-4-8"
     args += ["--model", _model]
+
+    # hub のシステム説明を常駐付与（金庫の作法・スマホ越し前提など）。指示文・events・
+    # logs には載らない＝機密も履歴も汚さない。改行を含む長文なので引数直書きは cmd.exe で
+    # 崩れる → 一時ファイルに書いて --append-system-prompt-file で渡す（prompt と同じ流儀）。
+    import tempfile
+    import os as _os
+    sys_fd, sysprompt_path = tempfile.mkstemp(prefix="claude_sys_", suffix=".txt")
+    with _os.fdopen(sys_fd, "w", encoding="utf-8") as f:
+        f.write(AIHUB_SYSTEM_BRIEFING)
+    args += ["--append-system-prompt-file", sysprompt_path]
+
     if extra_args:
         args += extra_args
 
@@ -281,8 +329,6 @@ async def run(
     # create_subprocess_shell は cmd.exe を経由するため、instruction を `-p "..."`
     # で渡すと cmd.exe のメタ文字（% 展開・" の扱い）と list2cmdline のクオートが
     # ズレて壊れる/誤展開する。run_oneshot と同じく stdin 経由にして遮断する。
-    import tempfile
-    import os as _os
     fd, prompt_path = tempfile.mkstemp(prefix="claude_job_", suffix=".txt")
     # 🔒金庫A方向: 一時ファイルに書く瞬間だけ {{名前}} を実値に置換する。
     # この置換後の文字列は job にも events にも戻さない（不変条件1）。
@@ -294,10 +340,11 @@ async def run(
     cmd_str = f'{cmd_str} < "{prompt_path}"'
 
     def _cleanup_prompt():
-        try:
-            _os.unlink(prompt_path)
-        except Exception:
-            pass
+        for p in (prompt_path, sysprompt_path):
+            try:
+                _os.unlink(p)
+            except Exception:
+                pass
 
     try:
         proc = await asyncio.create_subprocess_shell(

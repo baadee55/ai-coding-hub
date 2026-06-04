@@ -13,7 +13,7 @@
   <title>AI hub β</title>
   <!-- アプリ版数。UIを変えたらここを上げる。app.js?v / sw.js?v が新URLになり
        Cloudflareのエッジキャッシュを貫通して最新が届く。index.html自体は no-store。 -->
-  <script>window.APP_VERSION = "61";</script>
+  <script>window.APP_VERSION = "65";</script>
   <link rel="manifest" href="/ui/manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
@@ -23,7 +23,7 @@
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <!-- 軽量 i18n（EN/JA 切替）。?v は APP_VERSION と揃える（三点同期の対象に準じる） -->
-  <script src="/ui/i18n.js?v=61"></script>
+  <script src="/ui/i18n.js?v=65"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
@@ -202,12 +202,18 @@
     .msg-ai p { margin: 4px 0; }
     .msg-ai ul,.msg-ai ol { margin: 4px 0 4px 16px; }
     .msg-ai li { margin: 2px 0; }
-    .msg-ai pre { margin: 8px 0; border-radius: 8px; overflow-x: auto; }
+    .msg-ai pre { margin: 8px 0; border-radius: 8px; overflow-x: auto; position: relative; }
     .msg-ai code:not(pre code) { background: rgba(255,255,255,0.1); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
     .msg-ai pre code { font-size: 12px; }
     .msg-ai a { color: var(--accent); }
-    .tts-btn { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px 0 0; display: block; }
+    /* 返答下部のアクション行（🔊読み上げ / 📋全文コピー）。横並びにしてタップ的を確保。 */
+    .msg-actions { display: flex; gap: 14px; padding-top: 6px; }
+    .tts-btn, .copy-btn { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0; }
     .tts-btn.speaking { color: var(--accent); }
+    .copy-btn.copied { color: var(--green); }
+    /* コードブロック右上の📋。pre に hover/タップしなくても常時出す（モバイルは hover が無い）。 */
+    .code-copy-btn { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.55); border: 1px solid var(--border); color: var(--muted); font-size: 12px; border-radius: 6px; padding: 3px 7px; cursor: pointer; line-height: 1; z-index: 2; }
+    .code-copy-btn.copied { color: var(--green); border-color: var(--green); }
 
     /* タイピング */
     .typing-indicator {
@@ -395,7 +401,8 @@
     #vaultDrawer h3 { font-size: 16px; font-weight: 700; }
     #vaultDrawer input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
     .vault-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
-    .vault-item .vname { font-family: monospace; color: var(--accent); flex-shrink: 0; }
+    .vault-item .vinsert { font-family: monospace; color: var(--accent); flex-shrink: 0; background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: 13px; }
+    .vault-item .vinsert:active { background: var(--accent); color: #fff; }
     .vault-item .vval { flex: 1; font-family: monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; }
     .vault-item .vdel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; flex-shrink: 0; }
     #fileTreeDrawer h3 { font-size: 15px; font-weight: 700; }
@@ -433,6 +440,9 @@
     .help-row { display:flex; gap:10px; align-items:flex-start; padding:5px 0; font-size:13.5px; line-height:1.5; }
     .help-key { flex:0 0 auto; min-width:34px; text-align:center; font-size:15px; }
     .help-row b { color:var(--text); }
+    .help-row code { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:1px 5px; font-size:12px; }
+    .help-copy { cursor:pointer; border-color:var(--accent) !important; color:var(--accent); }
+    .help-copy:active { background:var(--accent) !important; color:#fff; }
     .help-note { font-size:12px; color:var(--muted); line-height:1.6; }
   </style>
 </head>
@@ -642,7 +652,10 @@
     <div style="display:flex;gap:6px;">
       <input id="vaultName" placeholder="名前（例: API_KEY）" data-i18n-ph="vault.namePh" style="flex:1;">
     </div>
-    <input id="vaultValue" type="password" placeholder="値（機密）" data-i18n-ph="vault.valuePh" style="width:100%;">
+    <div style="display:flex;gap:6px;align-items:stretch;">
+      <input id="vaultValue" type="password" placeholder="値（機密）" data-i18n-ph="vault.valuePh" style="flex:1;">
+      <button class="icon-btn" id="vaultMicBtn" type="button" title="音声で入力" data-i18n-title="vault.micValue" style="flex-shrink:0;font-size:20px;">🎤</button>
+    </div>
     <button class="btn-add" id="vaultAddBtn" style="width:100%;" data-i18n="vault.addBtn">＋ 追加</button>
     <div id="vaultList" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;"></div>
     <button class="btn-cancel" id="vaultLockBtn" style="width:100%;margin-top:8px;" data-i18n="vault.lockBtn">🔒 今すぐロック</button>
@@ -753,7 +766,10 @@
     <h4>入力エリア</h4>
     <div class="help-row"><span class="help-key">⭐</span><span><b>お気に入り</b>。よく使う指示を登録してワンタップ送信。</span></div>
     <div class="help-row"><span class="help-key">📎</span><span><b>添付</b>。画像やファイルを添付して指示できます。</span></div>
-    <div class="help-row"><span class="help-key">📝</span><span><b>タスク化</b>。複数の作業に分けて順に実行します。</span></div>
+    <div class="help-row"><span class="help-key">🔒</span><span><b>金庫（Vault）</b>。APIキー・パスワード・ニーモニック等の<b>機密値を、チャット履歴・画面・ログに残さず</b>AIとやり取りします。指紋か暗証番号で開錠。値は<b>スマホ端末内だけ</b>に暗号化保存（PCには保存しません）。<b>双方向</b>に使えます↓</span></div>
+    <div class="help-row" style="opacity:.95;"><span class="help-key">A→</span><span><b>渡す（スマホ→PC）</b>。🔒で値を登録（例: 名前 <code>API_KEY</code>）→ 開錠中に名前チップをタップすると本文に <code class="help-copy">{{API_KEY}}</code> が入ります（タップでコピーも可）。送信時にだけ実値へ置換され、<b>履歴・ログには <code>{{API_KEY}}</code> の名前だけ</b>残ります。</span></div>
+    <div class="help-row" style="opacity:.95;"><span class="help-key">←B</span><span><b>受け取る（PC→スマホ）</b>。AIに <code class="help-copy">[[secret:名前]]値[[/secret]]</code> で囲んで返すよう頼みます。例:「生成したトークンを <code class="help-copy">[[secret:token]]…[[/secret]]</code> で囲んで返して」。実値は金庫チャネルへ分離され、<b>本文には <code>[[secret:token]]</code> だけ</b>。スマホで開錠時のみ表示。</span></div>
+    <div class="help-row" style="opacity:.85;"><span class="help-key">💡</span><span>上の <code class="help-copy">…</code> 部分は<b>タップでコピー</b>できます。値入力欄の🎤で<b>声で値を入れる</b>こともできます（声もチャットに残りません）。</span></div>
     <div class="help-row"><span class="help-key">🎤</span><span><b>音声入力</b>（日本語）。話した内容が入力欄に入ります。</span></div>
     <div class="help-row"><span class="help-key">⚡</span><span><b>今すぐ割り込み</b>（実行中だけ表示）。今の生成を止めて、<b>会話はそのまま</b>（文脈を保持）新しい指示で立て直します。「説明が足りなかった／やっぱ違う」時に。</span></div>
     <div class="help-row"><span class="help-key">✕</span><span><b>中断</b>。実行中だけ表示され、作業を全部止めます（新しい指示は出しません）。</span></div>
@@ -762,7 +778,8 @@
     <h4>便利なジェスチャー</h4>
     <div class="help-row"><span class="help-key">🕘</span><span>入力欄の<b>🕘ボタン</b>で過去に送った指示を呼び出し（タップで入力欄へ）。PCなら入力欄が空のとき<b>↑↓キー</b>でも可。</span></div>
     <div class="help-row"><span class="help-key">↔</span><span>メッセージ画面を<b>左右スワイプ</b>でプロジェクト切替。</span></div>
-    <div class="help-row"><span class="help-key">⤓</span><span>一番上で<b>下に引く</b>と最新状態に更新。メッセージ<b>長押し</b>でコピー。</span></div>
+    <div class="help-row"><span class="help-key">⤓</span><span>一番上で<b>下に引く</b>と最新状態に更新。</span></div>
+    <div class="help-row"><span class="help-key">📋</span><span>AIの各返答の下の<b>📋</b>で<b>返答全文</b>をコピー。コードブロックは<b>右上の📋</b>でそのブロックだけコピー（メッセージ<b>長押し</b>でも可）。</span></div>
     </div>
 
     <button onclick="document.getElementById('helpModal').style.display='none'" style="margin-top:20px;width:100%;background:var(--accent);color:white;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;" data-i18n="common.close">閉じる</button>

@@ -2,7 +2,7 @@
 // （UI を変えてバージョンを上げるときは index.html / sw.js / ここの3点を同じ数字に）。
 // index.html 側の自己修復ガードが、この値と window.APP_VERSION の不一致を検出したら
 // 古い SW を unregister して取り直す。＝SW が壊れていても必ず最新へ収束する保険。
-window.APP_JS_VERSION = "61";
+window.APP_JS_VERSION = "65";
 
 // ===== 設定 =====
 // 実行エンジンは Claude Code に一本化（Maxプラン枠で動作）。
@@ -323,6 +323,15 @@ function buildAiMsgEl(text, actions, summary) {
   const textEl = document.createElement("div");
   textEl.innerHTML = renderMarkdown(text);
   d.appendChild(textEl);
+  // コードブロックごとに右上へ📋を差す。pre 内の <code> 全文をコピー（行番号や装飾は含まない）。
+  textEl.querySelectorAll("pre").forEach(pre => {
+    const codeEl = pre.querySelector("code");
+    if (!codeEl) return;
+    const cb = document.createElement("button");
+    cb.className = "code-copy-btn"; cb.textContent = "📋"; cb.title = t("copy.code");
+    cb.onclick = () => copyText(codeEl.textContent, cb);
+    pre.appendChild(cb);
+  });
   // 要約ボックス（「💡 つまり:」）は本文の繰り返しで冗長なので表示しない。
   // 引数 summary は通知タイトル等で別途使うため残す。
   if (actions && actions.length > 0) {
@@ -341,15 +350,34 @@ function buildAiMsgEl(text, actions, summary) {
     };
     actDiv.appendChild(btn); actDiv.appendChild(logDiv); d.appendChild(actDiv);
   }
+  // 返答下部のアクション行: 🔊読み上げ / 📋全文コピー。長押しコピーは気付きにくいので明示ボタンも置く。
+  const actions2 = document.createElement("div");
+  actions2.className = "msg-actions";
   const ttsBtn = document.createElement("button");
   ttsBtn.className = "tts-btn"; ttsBtn.textContent = "🔊"; ttsBtn.title = t("tts.title");
   ttsBtn.onclick = () => {
     if (ttsBtn.classList.contains("speaking")) { speechSynthesis.cancel(); ttsBtn.classList.remove("speaking"); return; }
     speak(text, ttsBtn);
   };
-  d.appendChild(ttsBtn);
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "copy-btn"; copyBtn.textContent = "📋"; copyBtn.title = t("copy.title");
+  copyBtn.onclick = () => copyText(text, copyBtn);
+  actions2.appendChild(ttsBtn); actions2.appendChild(copyBtn);
+  d.appendChild(actions2);
   d.dataset.rawText = text;
   return d;
+}
+
+// クリップボードへコピーし、押したボタンを一時的に✓へ。トーストも出す（モバイルで反応が分かりやすい）。
+function copyText(str, btn) {
+  navigator.clipboard?.writeText(str).then(() => {
+    showToast(t("toast.copied"));
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = "✓"; btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1200);
+    }
+  });
 }
 
 // ===== メッセージ追加 =====
@@ -1129,6 +1157,13 @@ document.getElementById("settingsBtn").onclick  = openDrawer;
 const _helpModal = document.getElementById("helpModal");
 document.getElementById("helpBtn").onclick = () => { closeDrawer(); _helpModal.style.display = "flex"; };
 _helpModal.addEventListener("click", e => { if (e.target === _helpModal) _helpModal.style.display = "none"; });
+// ヘルプ内の <code class="help-copy"> はタップで中身をコピー（金庫の {{名前}} / [[secret:名前]] 例）。
+// 委譲で配線＝言語切替で help.body が差し替わっても効く。値そのものは含まない雛形だけ。
+_helpModal.addEventListener("click", e => {
+  const code = e.target.closest(".help-copy");
+  if (!code) return;
+  navigator.clipboard?.writeText(code.textContent.trim()).then(() => showToast(t("toast.copied")));
+});
 document.getElementById("drawerOverlay").onclick = closeDrawer;
 document.getElementById("drawerSave").onclick = async () => {
   saveSettings({
@@ -1324,6 +1359,10 @@ let recognition = null;
 let micActive = false;
 let micBase = "";       // 録音開始時点の入力欄テキスト（録音中は不変）
 let micFinal = "";      // この録音で確定した語の連結
+// 音声の書き込み先 textarea/input。既定はチャット入力欄。金庫の値入力欄でも
+// 音声を使えるよう、startMic 時に差し替える（暗証番号・値をチャットに残さず入れる）。
+let micTarget = $instruction;
+let _micBtnActive = $micBtn;   // 録音中表示を出しているボタン（チャット or 金庫）
 const MIC_DEBUG = new URLSearchParams(location.search).get("micdebug") === "1";
 
 // 2つの文字列を、必要なときだけ空白1つでつなぐ（二重空白は作らない）。
@@ -1333,11 +1372,11 @@ function micJoin(base, add) {
   return /\s$/.test(base) || /^\s/.test(add) ? base + add : base + " " + add;
 }
 
-// 現在の表示文字列を組み立てて入力欄へ反映する。
+// 現在の表示文字列を組み立てて書き込み先（micTarget）へ反映する。
 function micRender(interim) {
   const txt = micJoin(micJoin(micBase, micFinal), interim.trim());
-  $instruction.value = txt;
-  $instruction.dispatchEvent(new Event("input"));   // textarea の高さを再計算
+  micTarget.value = txt;
+  micTarget.dispatchEvent(new Event("input"));   // textarea の高さ再計算等を発火
 }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1395,19 +1434,26 @@ if (!SR || _isIOS) {
 
 function resetMicUI() {
   micActive = false;
+  // 録音表示を出していたボタンを戻す（チャット🎤 or 金庫🎤 どちらでも）。
+  if (_micBtnActive) _micBtnActive.classList.remove("active");
   $micBtn.classList.remove("active");
   $micBtn.textContent = "🎤";
   $micBtn.title = t("mic.title");
+  micTarget = $instruction;   // 次回の既定をチャット入力欄に戻す
+  _micBtnActive = $micBtn;
 }
 
-function startMic() {
+// target を渡すとそこへ書き込む（既定はチャット入力欄）。btn は録音中表示を切り替える
+// ボタン（既定は $micBtn）。金庫の値入力欄から呼ぶときは両方を金庫側に差し替える。
+function startMic(target, btn) {
   if (!recognition || micActive) return;
-  micBase = $instruction.value.trim();   // 既存入力を土台に追記する
+  micTarget = target || $instruction;
+  _micBtnActive = btn || $micBtn;
+  micBase = micTarget.value.trim();      // 既存入力を土台に追記する
   micFinal = "";                         // この録音の確定分はゼロから
   micActive = true;
-  $micBtn.classList.add("active");
-  $micBtn.textContent = "⏺";
-  $micBtn.title = t("mic.stop");
+  _micBtnActive.classList.add("active");
+  if (_micBtnActive === $micBtn) { $micBtn.textContent = "⏺"; $micBtn.title = t("mic.stop"); }
   try { recognition.start(); }
   catch { resetMicUI(); showToast(t("toast.micStartFail")); }
 }
@@ -1526,16 +1572,22 @@ function vaultRenderList() {
     $l.innerHTML = `<div style="color:var(--muted);font-size:12px;">${t("vault.empty")}</div>`;
     return;
   }
+  // 名前チップ（タップで本文に {{名前}} を挿入＝記号を打たずに A方向が使える）と
+  // 👁（長押しで実値）と 🗑 を分ける。チップ本体タップ＝挿入、👁＝のぞき見、🗑＝削除。
   $l.innerHTML = names.map(n => `
     <div class="vault-item" data-name="${escapeHtml(n)}">
-      <span class="vname">{{${escapeHtml(n)}}}</span>
+      <button class="vinsert" title="${t("vault.insertHint")}">{{${escapeHtml(n)}}}</button>
       <span class="vval" data-reveal="0">••••••••</span>
       <button class="vdel" title="${t("vault.delConfirm")}">🗑</button>
     </div>`).join("");
-  // 👁長押しで表示、離すと伏せ字。クリップボード経由を避ける。
   $l.querySelectorAll(".vault-item").forEach(item => {
     const name = item.getAttribute("data-name");
     const val = item.querySelector(".vval");
+    // 名前タップ → 本文末尾に {{名前}} を挿入して金庫を閉じる。記号を発話/手打ち不要。
+    item.querySelector(".vinsert").addEventListener("click", () => {
+      vaultInsertPlaceholder(name);
+    });
+    // 👁長押しで表示、離すと伏せ字。クリップボード経由を避ける。
     const reveal = () => { val.textContent = (vaultSecrets[name] || ""); vaultResetLockTimer(); };
     const hide = () => { val.textContent = "••••••••"; };
     val.addEventListener("touchstart", reveal); val.addEventListener("touchend", hide);
@@ -1551,10 +1603,33 @@ function vaultRenderList() {
   });
 }
 
+// 本文の入力欄末尾に {{名前}} を挿入する。音声で文章を喋ったあと、🔒を開いて
+// 値の名前をタップすればここが呼ばれ、記号（波括弧）を一切発話/手打ちせずに
+// A方向（値を渡す）が成立する。挿入後は金庫を閉じて入力欄にフォーカス。
+function vaultInsertPlaceholder(name) {
+  const ph = "{{" + name + "}}";
+  const cur = $instruction.value;
+  // 直前が空白でなければスペースを足して読みやすく（文中挿入でもくっつかない）。
+  const sep = (cur && !/\s$/.test(cur)) ? " " : "";
+  $instruction.value = cur + sep + ph;
+  $instruction.dispatchEvent(new Event("input"));  // 高さ自動調整等を発火
+  vaultResetLockTimer();
+  closeVault();
+  $instruction.focus();
+  showToast(t("vault.inserted", { name }));
+}
+
 // 開錠中に使った PIN を保持（再保存用）。ロックでクリア。
 let _vaultActivePin = null;
 async function vaultPersistCurrentPin() {
   if (_vaultActivePin) await vaultPersist(_vaultActivePin);
+}
+// 指紋開錠の材料は「正しい PIN を確認できた瞬間」に必ず保存/更新する。
+// PIN 設定時・PIN 開錠時に呼ぶ。PIN 変更後も追従させ、古い PIN が残って
+// 復号に失敗→無言で PIN 入力に落ちる事故を防ぐ。
+const VAULT_FP_KEY = "vaultFpUnlock_v1";
+function vaultSetFpMaterial(pin) {
+  if (pin) localStorage.setItem(VAULT_FP_KEY, pin);
 }
 
 function openVault() {
@@ -1582,6 +1657,7 @@ document.getElementById("vaultPinSetBtn").onclick = async () => {
   vaultSecrets = {};
   _vaultActivePin = pin;
   await vaultPersist(pin);
+  vaultSetFpMaterial(pin);
   document.getElementById("vaultPinSet").value = "";
   vaultShowUnlocked();
 };
@@ -1599,6 +1675,7 @@ document.getElementById("vaultPinBtn").onclick = async () => {
     vaultSecrets = raw ? await vaultDecrypt(JSON.parse(raw), pin) : {};
   } catch { vaultSecrets = {}; }
   _vaultActivePin = pin;
+  vaultSetFpMaterial(pin);
   document.getElementById("vaultPin").value = "";
   vaultShowUnlocked();
 };
@@ -1628,7 +1705,7 @@ document.getElementById("vaultFpBtn").onclick = async () => {
     const res = await api("/auth/login/finish", "POST", { session_id, credential });
     if (!res.jwt) throw new Error("no jwt");
     // 指紋成功＝本人確認OK。端末に「指紋ラップ済み解錠材料」を置いておき、それで復号。
-    const wrapped = localStorage.getItem("vaultFpUnlock_v1");
+    const wrapped = localStorage.getItem(VAULT_FP_KEY);
     if (wrapped) {
       try {
         const raw = localStorage.getItem(VAULT_LS_KEY);
@@ -1636,10 +1713,13 @@ document.getElementById("vaultFpBtn").onclick = async () => {
         _vaultActivePin = wrapped;
         vaultShowUnlocked();
         return;
-      } catch {}
+      } catch {
+        // 復号失敗＝保存材料が古い（PIN 変更後など）。捨てて PIN 入力へ誘導。
+        localStorage.removeItem(VAULT_FP_KEY);
+      }
     }
-    // 指紋ラップ材料が未設定なら、PIN 入力にフォールバック
-    err.textContent = t("vault.unlockPin"); err.style.display = "block";
+    // 指紋ラップ材料が未設定/失効 → PIN 入力にフォールバック
+    err.textContent = t("vault.fpNotReady"); err.style.display = "block";
   } catch (e) {
     err.textContent = t("vault.fpFail"); err.style.display = "block";
   }
@@ -1653,15 +1733,30 @@ document.getElementById("vaultAddBtn").onclick = async () => {
   if (!/^[A-Za-z0-9_\-]{1,64}$/.test(name) || !value) return;
   vaultSecrets[name] = value;
   await vaultPersistCurrentPin();
-  // 指紋開錠を有効にするため、初回追加時に PIN を指紋ラップ材料として保存
-  if (_vaultActivePin && !localStorage.getItem("vaultFpUnlock_v1")) {
-    localStorage.setItem("vaultFpUnlock_v1", _vaultActivePin);
-  }
+  // 指紋開錠材料は PIN 設定/開錠時に保存済み。保険として未設定なら今ここでも保存。
+  if (_vaultActivePin && !localStorage.getItem(VAULT_FP_KEY)) vaultSetFpMaterial(_vaultActivePin);
   document.getElementById("vaultName").value = "";
   document.getElementById("vaultValue").value = "";
   vaultRenderList();
   vaultResetLockTimer();
 };
+
+// --- 金庫の値入力欄に音声入力（暗証番号・値をチャットに残さず入れる） ---
+// 書き込み先を vaultValue に差し替えて録音。値はドロワー内に留まり、チャット履歴・
+// ログには一切出ない（保存後は逆マスク/分離の通常経路に乗る）。
+const _vaultMicBtn = document.getElementById("vaultMicBtn");
+if (_vaultMicBtn) {
+  if (!recognition) {
+    _vaultMicBtn.style.display = "none";   // 非対応/iOS は隠す（チャット🎤と同じ判断）
+  } else {
+    _vaultMicBtn.onclick = () => {
+      if (micActive) { stopMic(); return; }
+      const $vv = document.getElementById("vaultValue");
+      startMic($vv, _vaultMicBtn);
+      vaultResetLockTimer();
+    };
+  }
+}
 
 // 本文に {{名前}} があり、その名前が開錠中の金庫にあれば secrets を組んで返す。
 // 開錠していない / 該当なし → null（通常送信）。

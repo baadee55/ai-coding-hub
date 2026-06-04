@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Optional
 
@@ -96,10 +97,31 @@ class CommandResponse(BaseModel):
 
 # ===== 内部ヘルパ =====
 
+# 金庫の作法そのものは engines/claude_code.py の AIHUB_SYSTEM_BRIEFING で常駐付与
+# （--append-system-prompt-file）しているので、ここでは指示文に痕跡があるときだけ
+# 軽いリマインダを前置きするに留める。指示文に載るぶんは履歴に残るので最小限にする。
+# 書式は engines/vault.py の正規表現と一致させること。
+VAULT_REMINDER = (
+    "（🔒金庫の作法: `{{名前}}` は実値注入済み・そのまま使う／機密を返すときは "
+    "`[[secret:名前]]値[[/secret]]` で囲む。詳細はシステム説明のとおり。）\n\n"
+)
+
+# 指示文が金庫の利用を示唆する痕跡（プレースホルダ／囲み／「金庫」「vault」「secret」の語）。
+_VAULT_HINT_RE = re.compile(
+    r"\{\{[A-Za-z0-9_\-]{1,64}\}\}"          # A方向プレースホルダ
+    r"|\[\[secret:"                            # B方向囲み
+    r"|金庫|ヴォールト|ボールト|vault|secret",  # 語彙
+    re.IGNORECASE,
+)
+
+
 def _build_instruction(req: CommandRequest) -> str:
     inst = req.instruction
     if req.extra_context:
         inst = f"<context>\n{req.extra_context}\n</context>\n\n{inst}"
+    # 金庫を使う指示のときだけ軽くリマインド（作法の本体は system prompt 側）。
+    if _VAULT_HINT_RE.search(inst):
+        inst = VAULT_REMINDER + inst
     return inst
 
 

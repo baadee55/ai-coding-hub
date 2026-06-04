@@ -32,6 +32,12 @@ New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 New-Item -ItemType Directory -Path $pidDir -Force | Out-Null
 
 # Helpers
+# 管理者権限が要る kill は「その場で UAC」を出さず、いったん貯めておき、
+# 全プロセス分まとめて一度だけ昇格 taskkill する（Flush-ElevatedKills）。
+# こうしないとゾンビが watchdog/agent/cloudflared と複数あるとき、起動毎に
+# UAC が個数ぶん（=3回）出てしまう。[[project_agent_runs_as_system]] のゾンビ対策。
+$script:PendingElevatedKills = @()
+
 function Kill-Pid {
     param([int]$ProcId, [string]$Label)
     if (-not $ProcId -or $ProcId -le 0) { return $true }
@@ -41,16 +47,29 @@ function Kill-Pid {
         Write-Host "  [killed] $Label (PID $ProcId)" -ForegroundColor DarkGray
         return $true
     } catch {
-        Write-Host "  [admin]  $Label (PID $ProcId) - elevating via UAC..." -ForegroundColor Yellow
-        Start-Process "powershell.exe" -ArgumentList "-Command","taskkill /F /PID $ProcId" -Verb RunAs -Wait -ErrorAction SilentlyContinue
-        Start-Sleep 1
-        if (Get-Process -Id $ProcId -ErrorAction SilentlyContinue) {
-            Write-Host "  [FAIL]   $Label (PID $ProcId)" -ForegroundColor Red
-            return $false
-        }
-        Write-Host "  [killed] $Label (PID $ProcId) [via UAC]" -ForegroundColor DarkGray
+        # 通常権限で倒せない → 昇格キューに積むだけ。UAC はまだ出さない。
+        Write-Host "  [defer]  $Label (PID $ProcId) - needs admin, queued" -ForegroundColor Yellow
+        $script:PendingElevatedKills += $ProcId
         return $true
     }
+}
+
+# 貯めた昇格 kill を一度の UAC でまとめて実行する。
+function Flush-ElevatedKills {
+    $pids = $script:PendingElevatedKills | Where-Object { $_ -gt 0 } | Select-Object -Unique
+    $script:PendingElevatedKills = @()
+    if (-not $pids -or $pids.Count -eq 0) { return $true }
+    Write-Host "  [admin]  Elevating once to kill $($pids.Count) leftover process(es) via UAC..." -ForegroundColor Yellow
+    $killArgs = ($pids | ForEach-Object { "/PID $_" }) -join " "
+    Start-Process "cmd.exe" -ArgumentList "/c taskkill /F $killArgs" -Verb RunAs -Wait -ErrorAction SilentlyContinue
+    Start-Sleep 1
+    $survivors = $pids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }
+    if ($survivors) {
+        Write-Host "  [FAIL]   Could not kill: $($survivors -join ', ')" -ForegroundColor Red
+        return $false
+    }
+    Write-Host "  [killed] leftover process(es) [via UAC]" -ForegroundColor DarkGray
+    return $true
 }
 
 function Kill-Port {
@@ -114,6 +133,8 @@ foreach ($name in @("watchdog","agent","vscode-tunnel","cursor-tunnel","cloudfla
         Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
     }
 }
+# 通常権限で倒せなかった分を、ここで一度だけ UAC を出してまとめて kill。
+$portOk = (Flush-ElevatedKills) -and $portOk
 if (-not $portOk) {
     Write-Host ""
     Write-Host "ERROR: Could not free required ports." -ForegroundColor Red
