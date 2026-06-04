@@ -106,4 +106,18 @@ watchdog は「インターネット越し vs PCローカル」を**ヘッダの
 - `.env` や `agent/*.py` を変えたら **agent を再起動**して反映（`start-all.ps1` 再実行でOK）
 - 端末追加(QR)は PC ローカルから `http://127.0.0.1:8765/ui/` を開く
 
+---
+
+## 6. トラブルシュート
+
+### スマホで開くと **502**（ローカルでは動くのに繋がらない）
+原因はほぼ **localhost の IPv4/IPv6 解決ずれ**。cloudflared 等が `localhost` を IPv6 `::1` で
+叩くのに、watchdog が IPv4 `127.0.0.1` だけで listen していると「ループバックなのに接続拒否」
+となりトンネルが 502 を返す。tunnel ログに `dial tcp [::1]:8765 ... refused` が出ていれば確定。
+
+→ **watchdog は IPv4(`127.0.0.1`) と IPv6(`::1`) の両ループバックで listen する**ので、最新版に
+更新（`git pull` → `start-all.ps1` 再実行）すれば直る。古い版を使っていて更新できない場合の
+回避策は、Cloudflare の Public Hostname の Service を `http://localhost:8765` →
+`http://127.0.0.1:8765` に変えること。
+
 困ったら **このリポジトリを AI エージェントに読ませて聞く**のが一番早い（[AGENTS.md](../AGENTS.md) 参照）。
