@@ -1,0 +1,310 @@
+from fastapi import FastAPI, Request, Header, HTTPException, Depends
+from fastapi.responses import JSONResponse, Response, StreamingResponse, RedirectResponse
+from contextlib import asynccontextmanager
+import httpx
+import subprocess
+import os
+import secrets
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
+
+# ===== SYSTEM 起動の構造的ブロック =====
+# 中継スタックが Windows の SYSTEM(LocalSystem)で上がると、そこから起動する
+# agent(claude 実行本体)もユーザープロファイル側のログイン/コマンドが見えず全ジョブが
+# 即死し、スマホに「SYSTEM 権限で実行できません」が出続ける。しかも SYSTEM プロセスは
+# 通常ユーザーからは kill できないため、ユーザー版 start-all の掃除をすり抜けて
+# ポートを握り続け、何度再起動しても直らない（＝手動対応を強いる）核心の原因。
+# ここで SYSTEM 版 watchdog 自身を即終了させれば、SYSTEM がポート(8765)も agent も
+# 掴めず、ログオン中のユーザー版だけが動く。UAC も手動再起動も不要で自動的に正常化する。
+# 判定: USERPROFILE が systemprofile を指す / USERNAME が末尾 `$`（マシンアカウント）。
+_up = (os.environ.get("USERPROFILE") or "").lower()
+_un = os.environ.get("USERNAME") or ""
+if "systemprofile" in _up or _un.endswith("$"):
+    raise SystemExit(
+        "[watchdog] SYSTEM(LocalSystem)権限のため起動を中止しました。"
+        " agent が claude を実行できないので、ログオン中のユーザーとして起動してください。"
+    )
+
+API_TOKEN = os.getenv("AGENT_TOKEN", "")
+if not API_TOKEN or API_TOKEN in ("change-me-now", "changeme", "default", "test"):
+    raise SystemExit(
+        "AGENT_TOKEN が未設定 or デフォルト値です。agent/.env にランダム値を設定してください。"
+    )
+AGENT_URL = "http://127.0.0.1:8766"
+for _k in ("AGENT_TOKEN", "CLOUDFLARE_TUNNEL_TOKEN", "CF_TOKEN"):
+    os.environ.pop(_k, None)  # 読み取り済み。子プロセスへ継承させない
+START_SCRIPT = str(Path(__file__).parent.parent / "start-all.ps1")
+
+# 「インターネット越し（=ローカル特権を与えない）」を識別するヘッダ名。
+# Cloudflare Tunnel は cf-connecting-ip を必ず付ける（エッジで設定・偽装不可）。
+# ⚠️ 別のトンネル（ngrok / Tailscale Funnel / frp 等）を使うなら、そのトンネルが
+#    「必ず付ける」ヘッダ名にこれを設定すること。誤るとインターネット越しの
+#    リクエストが「真のローカル」扱いになり端末追加などの特権を奪われる重大な穴になる。
+# 判定に確信が持てないトンネルでは ASSUME_REMOTE=1 にしてフェイルセーフ（全proxyを
+# リモート扱い。端末追加は agent:8766 をPCから直接叩く）。
+REMOTE_MARKER_HEADER = os.getenv("REMOTE_MARKER_HEADER", "cf-connecting-ip").strip().lower()
+ASSUME_REMOTE = os.getenv("ASSUME_REMOTE", "").strip().lower() in ("1", "true", "yes")
+
+# フォーク安全策: 既定（CF前提）のまま別トンネルを使うと、リモートが「真ローカル」扱いに
+# なり端末追加などの特権を奪われる穴になる。明示設定が無い場合は起動ログで注意喚起する（非致命）。
+if not os.getenv("REMOTE_MARKER_HEADER") and not ASSUME_REMOTE:
+    print(
+        "[watchdog] REMOTE_MARKER_HEADER 未設定 → 既定 'cf-connecting-ip'（Cloudflare Tunnel 前提）を使用。"
+        " 別トンネル(ngrok/Tailscale/frp等)なら agent/.env で REMOTE_MARKER_HEADER を設定するか ASSUME_REMOTE=1 を。",
+        flush=True,
+    )
+
+# 全リクエストをメインエージェントへ転送する共有 httpx クライアント
+# （接続プール再利用で CLOSE_WAIT 蓄積を防ぐ）。lifespan で生成/破棄する。
+_proxy_client: httpx.AsyncClient | None = None
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    global _proxy_client
+    _proxy_client = httpx.AsyncClient(
+        timeout=90.0,
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=40),
+    )
+    try:
+        yield
+    finally:
+        if _proxy_client is not None:
+            await _proxy_client.aclose()
+            _proxy_client = None
+
+
+app = FastAPI(title="AI Hub Watchdog", docs_url=None, redoc_url=None, lifespan=_lifespan)
+
+
+def verify_token(authorization: str = Header(None)):
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
+    if not secrets.compare_digest(token, API_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+import time as _time
+_health_cache: dict = {"data": None, "exp": 0.0}
+
+
+async def _agent_health(*, max_age: float = 3.0) -> dict | None:
+    """agent の /health を 3 秒キャッシュして連射の遅延を防ぐ。"""
+    now = _time.time()
+    if _health_cache["data"] is not None and _health_cache["exp"] > now:
+        return _health_cache["data"]
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as c:
+            r = await c.get(f"{AGENT_URL}/health")
+            if r.status_code == 200:
+                data = r.json()
+                _health_cache["data"] = data
+                _health_cache["exp"] = now + max_age
+                return data
+    except Exception:
+        pass
+    _health_cache["data"] = None
+    _health_cache["exp"] = now + 1.0  # ダウン時は短めに再試行
+    return None
+
+
+def _launch():
+    subprocess.Popen(
+        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", START_SCRIPT],
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+
+
+# ===== Watchdog 専用エンドポイント =====
+# /health は agent 側に丸投げする（proxy 経由で）。watchdog 側で agent 健康
+# 状態を確認するための httpx 呼び出しが Windows で重く、PWA の health check
+# がエッジ（cloudflared）でタイムアウトしてしまうため。
+# agent が落ちている場合は proxy() の ConnectError ハンドラが 503 を返す。
+
+
+@app.post("/start", dependencies=[Depends(verify_token)])
+async def start():
+    _launch()
+    return {"status": "starting"}
+
+
+@app.post("/restart", dependencies=[Depends(verify_token)])
+async def restart():
+    _launch()
+    return {"status": "restarting"}
+
+
+# ルート（https://<domain>/）を開いたらアプリ（/ui/）へ。短い固定URLで入れるように。
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/ui/", status_code=307)
+
+
+# ===== 全リクエストをメインエージェントへ転送 =====
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy(path: str, request: Request):
+    # 念のため catch-all 側でもルートを拾って /ui/ へ。
+    if path == "":
+        return RedirectResponse(url="/ui/", status_code=307)
+    url = f"{AGENT_URL}/{path}"
+    body = await request.body()
+    # 公開口（watchdog）経由のリクエストには X-Via-Watchdog マーカを付ける。
+    # agent 側はこのヘッダがあるリクエストを「真のローカル」とみなさない。
+    #
+    # ただし「PC ローカルブラウザ→watchdog」も watchdog 経由ではあるが、
+    # 端末追加(/auth/register/token)などのローカル特権が必要なため区別する。
+    # 区別方法: トンネルが中継したリクエストには REMOTE_MARKER_HEADER が付く
+    # (既定 cf-connecting-ip。CF エッジで設定され攻撃者が偽装不可)。watchdog は
+    # 127.0.0.1 でしか listen していないので、そのヘッダが無い = ローカル直接接続。
+    is_via_tunnel = REMOTE_MARKER_HEADER in {k.lower() for k in request.headers.keys()}
+    # 攻撃者が偽装できないよう、入ってきた x-via-watchdog は剥がしてから付け直す
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in ("host", "content-length", "transfer-encoding", "x-via-watchdog")
+    }
+    # Host が loopback 名でない要求（DNS リバインディング等）はリモート扱い
+    from urllib.parse import urlsplit
+    _host = (request.headers.get("host") or "").strip()
+    _bad_host = bool(_host) and (urlsplit("//" + _host).hostname or "").lower() not in ("127.0.0.1", "localhost", "::1")
+    if ASSUME_REMOTE or is_via_tunnel or _bad_host:
+        headers["X-Via-Watchdog"] = "1"
+    # ローカル直 (PC ブラウザから 127.0.0.1:8765) はヘッダを付けない →
+    # agent は普通の 127.0.0.1 として扱う = ローカル特権あり
+    params = dict(request.query_params)
+
+    # SSE ストリーミングは別処理（バッファリングしない）
+    if path.endswith("/stream"):
+        async def sse_gen():
+            async with httpx.AsyncClient(timeout=None) as c:
+                async with c.stream(request.method, url, headers=headers, content=body, params=params) as r:
+                    async for chunk in r.aiter_bytes():
+                        yield chunk
+        return StreamingResponse(
+            sse_gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    try:
+        assert _proxy_client is not None
+        r = await _proxy_client.request(
+            method=request.method,
+            url=url,
+            headers=headers,
+            content=body,
+            params=params,
+            follow_redirects=True,
+        )
+        # agent が付けたレスポンスヘッダ（特に Cache-Control）を素通しする。
+        # これを落とすと /ui/*.js の no-store が消え、Cloudflare エッジが古い app.js を
+        # 長期キャッシュして「何バージョン上げてもスマホに新 UI が届かない」核心の不具合に
+        # なる（agent は no-store を付けているのに watchdog が捨てていた）。
+        # content-length / transfer-encoding / content-encoding は Response が本文から
+        # 再計算するので転送しない（二重指定でボディ破損を防ぐ）。
+        _hop = {"content-length", "transfer-encoding", "content-encoding", "connection"}
+        passthru = {
+            k: v for k, v in r.headers.items()
+            if k.lower() not in _hop and k.lower() != "content-type"
+        }
+        return Response(
+            content=r.content,
+            status_code=r.status_code,
+            media_type=r.headers.get("content-type"),
+            headers=passthru,
+        )
+    except httpx.ConnectError:
+        return JSONResponse(
+            {"detail": "PCのエージェントが停止しています。設定の「エージェントを再起動」を押してください。", "agent": "down"},
+            status_code=503,
+        )
+    except Exception as e:
+        return JSONResponse({"detail": f"プロキシエラー: {e}"}, status_code=502)
+
+
+def _loopback_sockets(port: int):
+    """ループバックの IPv4(127.0.0.1) と IPv6(::1) の両方で listen する socket を作る。
+
+    なぜ両方か: cloudflared・ブラウザ・各種プロキシは `localhost` を **IPv6(::1) 優先**で
+    解決することが多い。IPv4 だけで listen していると「ループバックなのに接続拒否」になり、
+    トンネルが **502** を返す（OS や名前解決順に依存して突然壊れる質の悪い不具合）。
+    両方バインドすれば `127.0.0.1` でも `localhost`/`::1` でも確実に繋がる。
+
+    セキュリティ: バインド先は **ループバックのみ**（127.0.0.1 / ::1）で、公開IF(0.0.0.0 / ::)
+    には一切出さない。よって「watchdog はループバックのみ listen ＋ REMOTE_MARKER_HEADER
+    でリモート判定」という安全モデルは不変（::1 からのローカル直アクセスも 127.0.0.1 と同様、
+    cf-connecting-ip が無い＝ローカル特権として正しく扱われる）。
+    """
+    import socket
+    specs = [
+        (socket.AF_INET, "127.0.0.1"),
+        (socket.AF_INET6, "::1"),
+    ]
+    socks = []
+    for family, host in specs:
+        try:
+            s = socket.socket(family, socket.SOCK_STREAM)
+            if family == socket.AF_INET6:
+                # ::1 専用に固定し、デュアルスタックでワイルドカード化されるのを防ぐ
+                try:
+                    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                except (AttributeError, OSError):
+                    pass
+            # Windows の SO_REUSEADDR は他プロセスによる横取りを許す挙動なので付けない
+            # （asyncio も Windows では付けない）。POSIX では TIME_WAIT 再利用のため付ける。
+            if os.name != "nt":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            s.listen(128)
+            socks.append(s)
+        except OSError as e:
+            # 例: IPv6 が無効な環境では ::1 バインドが失敗する → IPv4 だけで続行する
+            print(f"[watchdog] skip listen {host}:{port}: {e}", flush=True)
+    return socks
+
+
+# Windows の ProactorEventLoop は、クライアントが accept 直後に接続を RST すると
+# overlapped accept が WinError 64 (ERROR_NETNAME_DELETED) 等で失敗し、既定の例外
+# ハンドラが "Accept failed on a socket" / "Task exception was never retrieved" を
+# 毎回 traceback 付きで吐く（asyncio はその listening socket を閉じる）。配信は ::1
+# 側で正常に続くため無害だが、放置すると watchdog.err が肥大する。良性のループバック
+# 切断系エラーだけ握り潰し、それ以外は既定ハンドラに委ねる（本物の障害は隠さない）。
+_BENIGN_WINERRORS = {
+    64,    # ERROR_NETNAME_DELETED   指定されたネットワーク名は利用できません
+    121,   # ERROR_SEM_TIMEOUT
+    1234,  # ERROR_PORT_UNREACHABLE
+    1236,  # ERROR_CONNECTION_ABORTED
+}
+
+
+def _quiet_loopback_errors(loop, context):
+    import errno
+    exc = context.get("exception")
+    if isinstance(exc, OSError):
+        if getattr(exc, "winerror", None) in _BENIGN_WINERRORS or \
+           exc.errno in (errno.ECONNRESET, errno.ECONNABORTED, errno.ENOTCONN):
+            return  # 良性のループバック切断: ログに残さない
+    loop.default_exception_handler(context)
+
+
+if __name__ == "__main__":
+    import asyncio
+    import uvicorn
+    PORT = 8765
+    socks = _loopback_sockets(PORT)
+    if not socks:
+        raise SystemExit(f"ポート {PORT} を loopback でバインドできませんでした")
+    addrs = "+".join(sorted({s.getsockname()[0] for s in socks}))
+    print(f"[watchdog] listening on {addrs} :{PORT} (IPv4/IPv6 loopback)", flush=True)
+    config = uvicorn.Config("watchdog:app", reload=False, log_level="info")
+    server = uvicorn.Server(config)
+    # server.run() は asyncio.run() で都度ループを作るため、例外ハンドラを差し込め
+    # ない。自前のループを立てて set_exception_handler してから serve() を回す
+    # （uvicorn 公式の埋め込みパターン）。Windows 既定の ProactorEventLoop を使う。
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.set_exception_handler(_quiet_loopback_errors)
+    try:
+        loop.run_until_complete(server.serve(sockets=socks))
+    finally:
+        loop.close()

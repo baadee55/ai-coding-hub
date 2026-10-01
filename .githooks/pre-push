@@ -1,0 +1,30 @@
+#!/bin/sh
+# =========================================================================
+# Pre-push gate: scan the pushed tree for secrets / personal info and abort
+# the push if anything is found.
+# Enable: git config core.hooksPath .githooks   (setup.ps1 does this for you)
+# =========================================================================
+root="$(git rev-parse --show-toplevel)"
+
+py="$(command -v python 2>/dev/null || command -v python3 2>/dev/null)"
+if [ -z "$py" ]; then
+  echo "pre-push: python not found -> aborting push for safety." >&2
+  exit 1
+fi
+
+fail=0
+while read local_ref local_sha remote_ref remote_sha; do
+  # skip branch deletions (all-zero sha)
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+  echo "[secret-scan] scanning $local_ref ..." >&2
+  "$py" "$root/scripts/secret-scan.py" "$local_sha" >&2 || fail=1
+done
+
+if [ "$fail" != "0" ]; then
+  echo "" >&2
+  echo "[BLOCKED] push aborted: possible secret / personal info detected (above)." >&2
+  echo "          Fix it, then push again." >&2
+  exit 1
+fi
+echo "[secret-scan] OK - no secrets detected." >&2
+exit 0

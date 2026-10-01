@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AI hub β">
+  <!-- iOS は apple-touch-icon に SVG を受け付けない → PNG を指定（無いと既定アイコンになる） -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/ui/icon-192.png?v=115">
+  <link rel="apple-touch-icon" sizes="180x180" href="/ui/apple-touch-icon.png?v=115">
+  <title>AI hub β</title>
+  <!-- アプリ版数。UIを変えたらここを上げる。app.js?v / sw.js?v が新URLになり
+       Cloudflareのエッジキャッシュを貫通して最新が届く。index.html自体は no-store。 -->
+  <script>window.APP_VERSION = "115";</script>
+  <link rel="manifest" href="/ui/manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/atom-one-dark.min.css">
+  <!-- ブラウザ用バンドル（common 言語に js/python/bash 同梱）。
+       /lib/core.min.js 等は CommonJS 版で window では "module is not defined" を投げるので使わない。 -->
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- 軽量 i18n（EN/JA 切替）。?v は APP_VERSION と揃える（三点同期の対象に準じる） -->
+  <script src="/ui/i18n.js?v=115"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg: #0f0f1a; --card: #1a1a2e; --border: #2a2a4a;
+      --accent: #6c63ff; --accent2: #ff6584;
+      --text: #f0f0f0; --muted: #888;
+      --green: #4ade80; --red: #f87171; --yellow: #fbbf24;
+      --vscode: #007acc;
+    }
+    /* アプリの高さは「ブラウザが言う 100dvh」ではなく JS が実測した可視領域
+       (visualViewport) を --app-h に焼き込んだ値を正とする。Android Chrome は
+       キーボード表示時に 100dvh の追従が不安定で、最下段ツールバーが overflow:hidden
+       の body に切られて消える事故が起きていた。実測値に固定して構造的に潰す。
+       --app-h 未設定時(JS実行前)だけ 100dvh にフォールバック。 */
+    html { height: 100%; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      height: var(--app-h, 100dvh); display: flex; flex-direction: column; overflow: hidden;
+      /* viewport-fit=cover でヘッダがノッチ/ステータスバー下に潜らないよう上端を確保（iOS） */
+      padding-top: env(safe-area-inset-top);
+    }
+
+    /* ===== ヘッダー ===== */
+    .header {
+      padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--border); background: var(--card); flex-shrink: 0;
+    }
+    /* min-width:0 + nowrap + overflow:hidden で、長い英語でもタイトルが縦折れせず
+       横にも溢れず副題は…で省略。狭い画面ではタイトルが先に縮み、アイコンは死守する。 */
+    .header-title { font-size: 17px; font-weight: 700; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+    .header-sub { font-size: 10px; color: var(--muted); display: block; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-pill { flex-shrink: 0; max-width: 40vw; overflow: hidden; }
+    .header .icon-btn { flex-shrink: 0; }
+    .status-pill {
+      display: flex; align-items: center; gap: 5px; font-size: 11px;
+      background: var(--bg); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border);
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .status-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.off { background: var(--red); }
+    .icon-btn { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px; }
+
+    .btn-primary {
+      background: var(--accent); color: white; border: none; border-radius: 12px;
+      padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%;
+    }
+
+    /* ===== メイン画面 ===== */
+    #mainScreen { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+
+    /* ===== プロジェクトバー ===== */
+    .project-bar {
+      padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--border);
+      display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .project-bar::-webkit-scrollbar { display: none; }
+    /* select は固定幅寄りにして、操作ボタンは縮まず横スクロールで全部届くようにする
+       （以前は select が flex:1 で伸び、右側のボタンが見切れていた） */
+    .project-bar select {
+      flex: 0 1 auto; width: 42vw; min-width: 120px;
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 7px 10px; font-size: 13px;
+    }
+    .project-bar > .model-pill { flex-shrink: 0; }
+    /* プロジェクト行の操作アイコンは「枠なし」にして省スペース＆見切れ解消。
+       絵文字だけのタップ領域にする。 */
+    .project-bar > .btn-sm {
+      flex-shrink: 0; background: none; border: none;
+      padding: 4px 4px; font-size: 21px; line-height: 1; border-radius: 8px;
+    }
+    .project-bar > .btn-sm:active { background: var(--border); }
+    .model-pill {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 5px 9px; font-size: 11px; color: var(--muted); cursor: pointer; white-space: nowrap;
+    }
+    .btn-sm {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; white-space: nowrap;
+    }
+    .btn-sm:active { background: var(--border); }
+
+    /* ===== Git バー ===== */
+    .git-bar {
+      display: flex; gap: 6px; padding: 6px 16px;
+      background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .git-btn {
+      flex: 1; background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px 4px; font-size: 11px; cursor: pointer; text-align: center;
+    }
+    .git-btn:active { background: var(--border); color: var(--text); }
+    .git-btn.vscode-git { color: var(--vscode); border-color: var(--vscode); flex: 0 0 auto; padding: 5px 10px; font-weight: 600; }
+
+    /* ===== お気に入り／履歴パネル ===== */
+    #favPanel, #histPanel {
+      display: none; padding: 6px 16px; background: var(--card);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      overflow-x: auto; white-space: nowrap; gap: 6px; scrollbar-width: none;
+    }
+    #favPanel.open, #histPanel.open { display: flex; }
+    #favPanel::-webkit-scrollbar, #histPanel::-webkit-scrollbar { display: none; }
+    .fav-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 16px;
+      padding: 4px 10px; font-size: 12px; cursor: pointer; flex-shrink: 0;
+    }
+    .fav-chip:active { background: var(--border); }
+    .fav-chip-del { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 0; }
+    .fav-add-btn {
+      background: none; border: 1px dashed var(--border); border-radius: 16px;
+      padding: 4px 10px; font-size: 12px; color: var(--muted); cursor: pointer; flex-shrink: 0;
+    }
+
+    /* ===== プルリフレッシュ ===== */
+    #pullIndicator { display: none; text-align: center; padding: 6px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    #pullIndicator.visible { display: block; }
+
+    /* ===== チャット ===== */
+    /* messages が縮む側（flex:1 1 0 + min-height:0）。これにより画面が短いとき
+       余白の奪い合いで負けるのは messages になり、入力欄とツールバーは常に画面内に残る。 */
+    #messages { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ウェルカム画面 */
+    #welcomeScreen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; gap: 20px; padding: 24px; text-align: center;
+    }
+    .welcome-icon { font-size: 48px; }
+    .welcome-title { font-size: 18px; font-weight: 700; }
+    .welcome-desc { font-size: 13px; color: var(--muted); line-height: 1.7; }
+    .welcome-hints { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+    .welcome-hint {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 14px; font-size: 13px; text-align: left; display: flex; align-items: center; gap: 10px;
+    }
+    .welcome-hint-icon { font-size: 18px; flex-shrink: 0; }
+
+    .msg { max-width: 88%; word-break: break-word; }
+    .msg-user {
+      align-self: flex-end; background: var(--accent); color: white;
+      padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 14px; line-height: 1.5;
+      white-space: pre-wrap;  /* 自分の書き込みの改行・連続スペースをそのまま表示 */
+    }
+    .msg-ai {
+      align-self: flex-start; background: var(--card); border: 1px solid var(--border);
+      padding: 12px 14px; border-radius: 18px 18px 18px 4px; font-size: 14px; line-height: 1.6;
+    }
+    .msg-system {
+      align-self: center; background: transparent; border: 1px dashed var(--border);
+      border-radius: 10px; padding: 6px 14px; font-size: 12px; color: var(--muted); max-width: 100%; text-align: center;
+    }
+    .msg-error {
+      align-self: center; background: rgba(248,113,113,0.1); border: 1px solid var(--red);
+      border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--red); max-width: 100%;
+    }
+
+    /* Markdown */
+    .msg-ai h1,.msg-ai h2,.msg-ai h3 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; }
+    .msg-ai p { margin: 4px 0; }
+    .msg-ai ul,.msg-ai ol { margin: 4px 0 4px 16px; }
+    .msg-ai li { margin: 2px 0; }
+    .msg-ai pre { margin: 8px 0; border-radius: 8px; overflow-x: auto; position: relative; }
+    .msg-ai code:not(pre code) { background: rgba(255,255,255,0.1); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+    .msg-ai pre code { font-size: 12px; }
+    .msg-ai a { color: var(--accent); }
+    /* 選択肢UI（[[choice:質問|A|B]] をボタン化）。スマホでタップしやすい大きさに。 */
+    .choice-box { margin: 10px 0 4px; }
+    .choice-q { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .choice-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .choice-btn {
+      background: rgba(108,99,255,0.15); color: #fff; border: 1px solid var(--accent);
+      border-radius: 12px; padding: 10px 14px; font-size: 14px; cursor: pointer;
+      min-height: 40px; flex: 1 1 auto; min-width: 44%;
+    }
+    .choice-btn:hover { background: rgba(108,99,255,0.28); }
+    .choice-btn.chosen { background: var(--accent); color: #fff; font-weight: 700; }
+    .choice-btn:disabled { opacity: 0.55; cursor: default; }
+    /* 返答下部のアクション行（🔊読み上げ / 📋全文コピー）。横並びにしてタップ的を確保。 */
+    .msg-actions { display: flex; gap: 14px; padding-top: 6px; }
+    .tts-btn, .copy-btn { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0; }
+    .tts-btn.speaking { color: var(--accent); }
+    .copy-btn.copied { color: var(--green); }
+    /* 自分の書き込み（青い吹き出し）内の📋。白地に映えるよう色を調整し、右寄せにする。 */
+    .msg-user .msg-actions { justify-content: flex-end; padding-top: 4px; }
+    .msg-user .copy-btn { color: rgba(255,255,255,0.75); font-size: 13px; }
+    .msg-user .copy-btn.copied { color: #fff; }
+    /* コードブロック右上の📋。pre に hover/タップしなくても常時出す（モバイルは hover が無い）。 */
+    .code-copy-btn { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.55); border: 1px solid var(--border); color: var(--muted); font-size: 12px; border-radius: 6px; padding: 3px 7px; cursor: pointer; line-height: 1; z-index: 2; }
+    .code-copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+    /* タイピング */
+    .typing-indicator {
+      align-self: flex-start; background: var(--card); border: 1px solid var(--border);
+      border-radius: 18px; padding: 12px 16px; display: flex; gap: 4px;
+    }
+    .typing-indicator span { width: 7px; height: 7px; background: var(--muted); border-radius: 50%; animation: bounce 1.2s infinite; }
+    .typing-indicator span:nth-child(2) { animation-delay: .2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+
+    /* ライブステータス（実行中バッジ）— 沈黙時間中も「動いてる」を可視化 */
+    .live-status {
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-top: 8px; padding: 5px 10px;
+      background: rgba(108,99,255,0.12); border: 1px solid rgba(108,99,255,0.35);
+      border-radius: 12px; font-size: 11px; color: var(--muted);
+      font-family: monospace; max-width: 100%;
+    }
+    .live-status .live-dots { display: inline-flex; gap: 3px; flex-shrink: 0; }
+    .live-status .live-dots span {
+      width: 5px; height: 5px; background: var(--accent); border-radius: 50%;
+      animation: bounce 1.2s infinite;
+    }
+    .live-status .live-dots span:nth-child(2) { animation-delay: .2s; }
+    .live-status .live-dots span:nth-child(3) { animation-delay: .4s; }
+    .live-status .live-label {
+      flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .live-status .live-elapsed {
+      color: var(--accent); font-weight: 600; flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 入力エリア — 入力欄を全幅で大きく、ボタンは下段ツールバーに分離して見切れ防止。
+       ヘッダー/プロジェクト/Git バーが flex-shrink:0 のうえ入力エリアまで縮まないと、
+       キーボードを開いた短い画面で縦に溢れ、最下段ツールバー（送信ボタン）が body{overflow:hidden}
+       に切られて「ボタンが消えた」になる。だから入力エリア自体を縦に縮められるようにし
+       （flex:0 1 auto / min-height:0）、ツールバーは flex-shrink:0 で必ず残し、textarea だけを縮める。 */
+    .input-area {
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
+      background: var(--card); border-top: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 8px;
+      /* 入力エリアは縮ませない（flex:0 0 auto）。代わりに #messages 側を縮ませることで
+         画面が短くてもツールバー（送信・マイク）が必ず画面内に残る。textarea 自体は
+         max-height:30dvh で頭打ちなので入力エリアが画面を食い尽くすことはない。 */
+      flex: 0 0 auto;
+    }
+    .input-area textarea {
+      width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 14px; padding: 13px 14px; font-size: 16px; font-family: inherit;
+      resize: none; height: 88px; max-height: calc(var(--app-h, 100dvh) * 0.3); line-height: 1.5;
+      /* textarea だけが縮む（min-height:0）。ツールバーは flex-shrink:0 で必ず残る。 */
+      flex: 1 1 auto; min-height: 0;
+    }
+    .input-area textarea:focus { outline: none; border-color: var(--accent); }
+    /* ツールバー（送信・マイク等）は絶対に縮めない＝常に画面内に残す */
+    .input-toolbar { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+    /* 左のユーティリティ群は残り幅で横スクロール。送信/マイク/中断は常に右に固定で
+       見切れない（以前は全ボタン flex-shrink:0 + 無折返しで、狭い端末だと送信ボタンが
+       画面右外にはみ出し body{overflow:hidden} に切られて「消えた」ように見えていた）。 */
+    .input-toolbar .toolbar-left {
+      display: flex; gap: 8px; align-items: center;
+      flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none;
+    }
+    .input-toolbar .toolbar-left::-webkit-scrollbar { display: none; }
+    .send-btn {
+      background: var(--accent); border: none; border-radius: 50%; width: 44px; height: 44px;
+      font-size: 18px; color: white; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      transition: transform .08s ease, background .15s ease, box-shadow .15s ease;
+    }
+    .send-btn:disabled { opacity: 0.4; }
+    /* 押した瞬間に凹む（指で押した感）。指を離す/タップ確定までの間ずっと効く。 */
+    .send-btn:active { transform: scale(0.86); background: var(--accent2); }
+    /* 送信が走った合図のポップ。JS が .sent を一瞬付ける → リング状の波紋＋弾む。
+       「押したのか押してないのか分からない」を、明確な動きで潰す。 */
+    .send-btn.sent { animation: sendPop .42s ease; }
+    @keyframes sendPop {
+      0%   { transform: scale(0.86); box-shadow: 0 0 0 0 rgba(108,99,255,.55); }
+      40%  { transform: scale(1.18); box-shadow: 0 0 0 10px rgba(108,99,255,0); }
+      100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(108,99,255,0); }
+    }
+    .mic-btn {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 50%;
+      width: 44px; height: 44px; font-size: 18px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    }
+    .mic-btn.active { background: var(--red); border-color: var(--red); }
+    .cancel-btn {
+      background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid var(--red);
+      border-radius: 50%; width: 44px; height: 44px; font-size: 16px; cursor: pointer;
+      flex-shrink: 0; align-items: center; justify-content: center; display: none;
+    }
+    .cancel-btn.visible { display: flex; }
+    /* ⚡ 割り込み（実行中だけ表示）。送信中に押すと今の生成を止めて即・新指示で立て直す。 */
+    .interrupt-btn {
+      background: rgba(108,99,255,0.18); color: var(--accent); border: 1px solid var(--accent);
+      border-radius: 50%; width: 44px; height: 44px; font-size: 18px; cursor: pointer;
+      flex-shrink: 0; align-items: center; justify-content: center; display: none;
+    }
+    .interrupt-btn.visible { display: flex; }
+    .interrupt-btn:active { transform: scale(0.9); background: var(--accent); color: white; }
+
+    /* トースト */
+    .toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: rgba(30,30,50,0.95); color: var(--text); border: 1px solid var(--border);
+      border-radius: 20px; padding: 8px 18px; font-size: 13px; z-index: 300;
+      pointer-events: none; white-space: nowrap;
+      animation: toastIn 0.15s ease, toastOut 0.3s ease 1.5s forwards;
+    }
+    @keyframes toastIn  { from { opacity:0; transform: translateX(-50%) translateY(8px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+    @keyframes toastOut { to { opacity:0; } }
+    /* タップ可能トースト（🔒受信通知など）: リンク風の下線＋長め表示（消える前に押せる） */
+    .toast.tappable {
+      pointer-events: auto; cursor: pointer; text-decoration: underline;
+      animation: toastIn 0.15s ease, toastOut 0.3s ease 4.7s forwards;
+    }
+    /* 🔒「金庫が機密を受け取りました」行: タップで金庫が開くリンク風表示 */
+    .msg-system.vault-link { cursor: pointer; text-decoration: underline; }
+
+    /* 接続ステータスの帯。position:fixed で画面上部に浮かせる＝フレックスの段組みに
+       一切影響しない（＝入力欄やツールバーを絶対に押し出さない）。再接続中の通知は
+       これだけを使い、#messages には積まない。 */
+    #connBar {
+      position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%;
+      transform: translateX(-50%); max-width: 92vw;
+      background: rgba(251,191,36,0.95); color: #1a1a2e; font-weight: 600;
+      border-radius: 20px; padding: 7px 16px; font-size: 12.5px; z-index: 400;
+      box-shadow: 0 4px 14px rgba(0,0,0,.35); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; display: none; pointer-events: none;
+    }
+    #connBar.visible { display: block; }
+    #connBar.err { background: rgba(248,113,113,0.96); color: #fff; }
+
+    /* 上を見ている間に新着が来たら出る「最下部へ」ボタン。入力欄のすぐ上・右寄せに浮かせる。
+       入力エリアの実測高さ（--input-h、JS が焼き込む）の少し上に固定するので、スクロールや
+       キーボード開閉と無関係に常に入力欄の真上に出る。 */
+    #jumpBottom {
+      position: fixed; right: 14px; bottom: calc(var(--input-h, 130px) + 10px);
+      width: 40px; height: 40px; border-radius: 50%; border: none;
+      background: var(--accent, #6366f1); color: #fff; font-size: 20px; line-height: 1;
+      box-shadow: 0 4px 14px rgba(0,0,0,.4); cursor: pointer; z-index: 350;
+      display: none; align-items: center; justify-content: center;
+    }
+    #jumpBottom.visible { display: flex; }
+    #jumpBottom.pulse { animation: jbPulse 1.4s ease-in-out infinite; }
+    @keyframes jbPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+    /* 設定ドロワー */
+    #settingsDrawer {
+      position: fixed; top: 0; right: -100%; width: min(360px, 94vw); height: 100dvh;
+      background: var(--card); border-left: 1px solid var(--border);
+      transition: right .25s ease; z-index: 100;
+      display: flex; flex-direction: column; overflow-y: auto;
+    }
+    #settingsDrawer.open { right: 0; }
+    .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99; }
+    .drawer-overlay.open { display: block; }
+    .drawer-section { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+    .drawer-section:last-child { border-bottom: none; }
+    .drawer-section-title { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+    .drawer-title { font-size: 18px; font-weight: 700; }
+    .field label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
+    .field input, .field select {
+      width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: monospace;
+    }
+    .drawer-save { background: var(--accent); color: white; border: none; border-radius: 12px; padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
+    .drawer-btn { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 11px; font-size: 14px; cursor: pointer; width: 100%; text-align: center; }
+    .drawer-danger { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid var(--red); border-radius: 12px; padding: 11px; font-size: 14px; cursor: pointer; text-align: center; width: 100%; }
+    .drawer-warn { background: rgba(251,191,36,0.15); color: var(--yellow); border: 1px solid var(--yellow); border-radius: 12px; padding: 11px; font-size: 14px; cursor: pointer; text-align: center; width: 100%; }
+
+    /* プロジェクト追加 */
+    #addProjectDrawer {
+      position: fixed; bottom: -100%; left: 0; right: 0; background: var(--card);
+      border-top: 1px solid var(--border); border-radius: 20px 20px 0 0;
+      padding: 24px 20px; transition: bottom .25s ease; z-index: 100;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    #addProjectDrawer.open { bottom: 0; }
+    #addProjectDrawer h3 { font-size: 16px; font-weight: 700; }
+    #addProjectDrawer p { font-size: 12px; color: var(--muted); }
+    #addProjectDrawer input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+    .row2 { display: flex; gap: 8px; }
+    .btn-cancel { flex: 1; background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 12px; font-size: 14px; cursor: pointer; }
+    .btn-add { flex: 2; background: var(--accent); color: white; border: none; border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+    /* ファイルツリー */
+    #fileTreeDrawer {
+      position: fixed; bottom: -100%; left: 0; right: 0; background: var(--card);
+      border-top: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 20px;
+      transition: bottom .25s ease; z-index: 100;
+      max-height: 70dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    }
+    #fileTreeDrawer.open { bottom: 0; }
+    #jobsDrawer.open, #procsDrawer.open { bottom: 0 !important; }
+
+    /* 🔒 金庫 */
+    #vaultDrawer {
+      position: fixed; bottom: -100%; left: 0; right: 0; background: var(--card);
+      border-top: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 20px;
+      transition: bottom .25s ease; z-index: 100;
+      max-height: 80dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    }
+    #vaultDrawer.open { bottom: 0; }
+    #vaultDrawer h3 { font-size: 16px; font-weight: 700; }
+    #vaultDrawer input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+    .vault-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+    .vault-item .vinsert { font-family: monospace; color: var(--accent); flex-shrink: 0; background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: 13px; }
+    .vault-item .vinsert:active { background: var(--accent); color: #fff; }
+    .vault-item .vval { flex: 1; font-family: monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; }
+    .vault-item .vdel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; flex-shrink: 0; }
+    #fileTreeDrawer h3 { font-size: 15px; font-weight: 700; }
+    .tree-item { padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: monospace; cursor: pointer; }
+    .tree-item:active { background: var(--border); }
+    .tree-item.folder { color: var(--yellow); }
+
+    /* IDE プロジェクトピッカー */
+    #idePickerDrawer.open { bottom: 0 !important; }
+    .ide-project-item {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px; text-align: left; cursor: pointer; color: var(--text);
+      font-family: inherit; font-size: 14px; display: flex; flex-direction: column;
+    }
+    .ide-project-item:active { background: var(--border); }
+    .ide-project-name { font-weight: 600; font-size: 14px; }
+    .ide-project-path { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 2px; word-break: break-all; }
+
+    /* インストールモーダル */
+    #installModal { display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.7); align-items:flex-end; justify-content:center; }
+
+    /* 使い方ヘルプ */
+    #helpModal { display:none; position:fixed; inset:0; z-index:250; background:rgba(0,0,0,.7); align-items:flex-end; justify-content:center; }
+    .help-card {
+      background:var(--card); border-radius:20px 20px 0 0;
+      padding:20px 20px calc(24px + env(safe-area-inset-bottom));
+      width:100%; max-width:520px; max-height:86dvh; overflow-y:auto;
+    }
+    .help-card .help-title { font-size:18px; font-weight:700; margin-bottom:4px; }
+    .help-card .help-lead { font-size:12.5px; color:var(--muted); line-height:1.6; margin-bottom:6px; }
+    .help-card h4 {
+      font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase;
+      letter-spacing:.07em; margin:16px 0 6px; border-bottom:1px solid var(--border); padding-bottom:4px;
+    }
+    .help-row { display:flex; gap:10px; align-items:flex-start; padding:5px 0; font-size:13.5px; line-height:1.5; }
+    .help-key { flex:0 0 auto; min-width:34px; text-align:center; font-size:15px; }
+    .help-row b { color:var(--text); }
+    .help-row code { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:1px 5px; font-size:12px; }
+    .help-copy { cursor:pointer; border-color:var(--accent) !important; color:var(--accent); }
+    .help-copy:active { background:var(--accent) !important; color:#fff; }
+    .help-note { font-size:12px; color:var(--muted); line-height:1.6; }
+
+    /* ===== 小画面圧縮（小型端末: 幅≤390px または 高さ≤700px） =====
+       全体に「でかくて見にくい」ので余白・フォント・ボタンを一段縮める。
+       注意: textarea/input の font-size は 16px 未満にしない（iOS がフォーカス時に
+       画面ごと自動ズームして戻らなくなるため）。 */
+    @media (max-width: 390px), (max-height: 700px) {
+      .header { padding: 4px 8px; gap: 5px; }
+      .header-title { font-size: 14px; }
+      .header-sub { font-size: 9px; }
+      .icon-btn { font-size: 17px; padding: 3px; }
+      .status-pill { font-size: 9px; padding: 2px 7px; }
+      .status-dot { width: 6px; height: 6px; }
+      .project-bar { padding: 4px 8px; gap: 4px; }
+      .project-bar select { font-size: 12px; padding: 5px 7px; min-width: 100px; }
+      .project-bar > .btn-sm { font-size: 17px; padding: 3px; }
+      .model-pill { font-size: 9px; padding: 3px 6px; }
+      .git-bar { padding: 3px 8px; gap: 4px; }
+      .git-btn { font-size: 10px; padding: 3px 3px; }
+      #messages { padding: 8px; gap: 8px; }
+      .msg-user { font-size: 13px; padding: 7px 11px; line-height: 1.45; }
+      .msg-ai { font-size: 13px; padding: 8px 11px; line-height: 1.5; }
+      .msg-ai h1,.msg-ai h2,.msg-ai h3 { font-size: 14px; }
+      .msg-system { font-size: 11px; padding: 4px 9px; }
+      .welcome-icon { font-size: 34px; }
+      .welcome-title { font-size: 15px; }
+      .welcome-desc { font-size: 12px; }
+      .welcome-hint { font-size: 12px; padding: 7px 11px; }
+      .choice-btn { font-size: 13px; padding: 7px 10px; min-height: 34px; }
+      /* 入力部分は特に圧縮: 余白を削り textarea は2行分に。
+         ただし textarea/input の font-size は 16px 未満にしない（iOS 自動ズーム防止）。 */
+      .input-area { padding: 5px 8px calc(5px + env(safe-area-inset-bottom)) 8px; gap: 4px; }
+      .input-area textarea { height: 48px; padding: 7px 10px; border-radius: 11px; line-height: 1.4; }
+      .input-toolbar { gap: 6px; }
+      .input-toolbar .toolbar-left { gap: 6px; }
+      .send-btn, .mic-btn, .cancel-btn, .interrupt-btn { width: 34px; height: 34px; font-size: 14px; }
+      .btn-sm { font-size: 11px; padding: 4px 7px; }
+      #jumpBottom { width: 34px; height: 34px; font-size: 17px; }
+      .drawer-section { padding: 10px 12px; gap: 9px; }
+      .drawer-title { font-size: 15px; }
+      .drawer-section-title { font-size: 10px; }
+      .field input, .field select { padding: 7px 9px; }
+      .drawer-save, .drawer-btn, .drawer-danger, .drawer-warn { padding: 9px; font-size: 13px; }
+      #vaultDrawer, #fileTreeDrawer, #addProjectDrawer { padding: 14px 12px; }
+      .vault-item { padding: 6px 9px; font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div class="header-title">
+    AI hub β
+    <span class="header-sub" data-i18n="header.sub">PCのAI作業の続きをスマホから</span>
+  </div>
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText" data-i18n="status.checking">確認中</span>
+  </div>
+  <button class="icon-btn" id="updateAppBtn" title="アプリを更新（最新版を取得）" data-i18n-title="tip.update">🔄</button>
+  <button class="icon-btn" id="langToggleBtn" title="Language / 言語">🌐</button>
+  <button class="icon-btn" id="helpBtn" title="使い方ヘルプ" data-i18n-title="tip.help">❓</button>
+  <button class="icon-btn" id="settingsBtn">⚙️</button>
+</div>
+
+<!-- 接続ステータスの帯（fixed・レイアウト非干渉）。再接続通知はここだけ。 -->
+<div id="connBar"></div>
+
+<!-- メイン画面 -->
+<div id="mainScreen">
+
+  <!-- ローカルUI(PC)で passkey 未登録のとき出る「スマホを追加」CTA -->
+  <div id="localSetupBanner" style="display:none;margin:8px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card);">
+    <div style="font-size:13px;margin-bottom:8px;line-height:1.6;" data-i18n="setup.localHint">このPCで初期設定中です。スマホで使うには、下のボタンでスマホを追加してください。</div>
+    <button id="addDeviceCta" class="btn-primary" data-i18n="setup.addPhone">📱 スマホを追加（QRを表示）</button>
+  </div>
+
+  <!-- プロジェクトバー -->
+  <div class="project-bar">
+    <select id="projectSelect"><option value="" data-i18n="proj.select">プロジェクトを選択</option></select>
+    <button class="model-pill" id="modelPill"  title="タップで Claude Code モデル切替（デフォルト/Haiku/Sonnet/Opus）" data-i18n-title="tip.model" style="display:none;">デフォルト</button>
+    <button class="btn-sm" id="newConvBtn"  title="新しい会話を開始（セッションを切る）" data-i18n-title="tip.newConv">🆕</button>
+    <button class="btn-sm" id="jobsBtn"     title="ジョブ履歴・実行中" data-i18n-title="tip.jobs">🗂</button>
+    <button class="btn-sm" id="procsBtn"    title="プロセス（dev server等）" data-i18n-title="tip.procs">🚀</button>
+    <button class="btn-sm" id="contextBtn"  title="AIがプロジェクト状況を解説" data-i18n-title="tip.context">📋</button>
+    <button class="btn-sm" id="dailyBtn"    title="今日の作業をAIがまとめ" data-i18n-title="tip.daily">📅</button>
+    <button class="btn-sm" id="fileTreeBtn" title="ファイル一覧" data-i18n-title="tip.fileTree">📂</button>
+    <button class="btn-sm" id="addProjectBtn" title="プロジェクトを追加" data-i18n-title="tip.addProject">＋</button>
+  </div>
+
+  <!-- Git + IDE バー -->
+  <div class="git-bar">
+    <button class="git-btn vscode-git" id="vscodeBtn" title="選んだプロジェクトを VS Code（ブラウザ）で開く" data-i18n-title="tip.vscode">⬡ VS Code</button>
+    <button class="git-btn" id="gitPullBtn"   title="リモートの変更を取得" data-i18n-title="tip.pull">↓ Pull</button>
+    <button class="git-btn" id="gitStatusBtn" title="変更の一覧を確認" data-i18n-title="tip.status">≡ Status</button>
+    <button class="git-btn" id="gitCommitBtn" title="変更をコミット" data-i18n-title="tip.commit">✓ Commit</button>
+    <button class="git-btn" id="gitPushBtn"   title="リモートに送信" data-i18n-title="tip.push">↑ Push</button>
+  </div>
+
+  <!-- お気に入りパネル -->
+  <div id="favPanel"></div>
+  <div id="histPanel"></div>
+
+  <!-- プルリフレッシュ -->
+  <div id="pullIndicator" data-i18n="pullIndicator">↻ 離して更新</div>
+
+  <!-- メッセージエリア -->
+  <div id="messages"></div>
+
+  <!-- 上を見ている間に新着が来たら出る「最下部へ」ボタン。タップで追従を再開する。 -->
+  <button id="jumpBottom" type="button" data-i18n-title="tip.jumpBottom" title="最新へ">↓</button>
+
+  <!-- 添付プレビュー -->
+  <div id="attachBar" style="display:none;padding:6px 16px;gap:6px;flex-wrap:wrap;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;"></div>
+
+  <!-- 入力エリア（入力欄は全幅・大きく、操作ボタンは下段に分離） -->
+  <div class="input-area">
+    <textarea id="instruction" placeholder="指示を入力…（🕘で履歴・⭐でお気に入り）" data-i18n-ph="input.ph" rows="4"></textarea>
+    <input id="attachInput" type="file" accept="image/*,.txt,.md,.json,.log" multiple style="display:none;">
+    <div class="input-toolbar">
+      <div class="toolbar-left">
+        <button class="btn-sm" id="histToggleBtn" title="送信履歴（過去の指示）" data-i18n-title="tip.hist" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">🕘</button>
+        <button class="btn-sm" id="favToggleBtn" title="お気に入り" data-i18n-title="tip.fav" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">⭐</button>
+        <button class="btn-sm" id="attachBtn"    title="画像/ファイルを添付（Claude Code）" data-i18n-title="tip.attach" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">📎</button>
+        <button class="btn-sm" id="vaultBtn"     title="🔒 金庫（機密値を履歴に残さず渡す/受け取る）" data-i18n-title="tip.vault" style="flex-shrink:0;padding:0 10px;height:44px;border-radius:12px;">🔒</button>
+      </div>
+      <button class="mic-btn"    id="micBtn">🎤</button>
+      <button class="interrupt-btn" id="interruptBtn" title="今すぐ割り込み" data-i18n-title="tip.interrupt">⚡</button>
+      <button class="cancel-btn" id="cancelBtn" title="中断" data-i18n-title="tip.cancel">✕</button>
+      <button class="send-btn"   id="sendBtn">↑</button>
+    </div>
+  </div>
+</div>
+
+<!-- 設定ドロワー -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<div id="settingsDrawer">
+  <div class="drawer-section" style="flex-direction:row;align-items:center;justify-content:space-between;">
+    <div class="drawer-title" data-i18n="settings.title">⚙️ 設定</div>
+    <button class="icon-btn" id="drawerClose" aria-label="閉じる">✕</button>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.connection">接続</div>
+    <div class="field">
+      <label data-i18n="setup.url">エージェントURL</label>
+      <input id="drawerUrl" type="url" autocomplete="off">
+    </div>
+    <div id="authStatusLine" style="font-size:12px;color:var(--muted);margin-top:2px;" data-i18n="settings.authChecking">認証状態を確認中…</div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title">Claude Code</div>
+    <div class="field">
+      <label data-i18n="settings.ccModelLabel">モデル（任意・空欄でデフォルト）</label>
+      <select id="drawerCcModel">
+        <option value="" data-i18n="model.default">デフォルト（最新Opus・作業向け）</option>
+        <option value="claude-fable-5" data-i18n="model.fable5">Fable 5（最上位・長時間エージェント）</option>
+        <option value="claude-sonnet-5" data-i18n="model.sonnet5">Sonnet 5（速度と知能のバランス）</option>
+        <option value="haiku" data-i18n="model.haiku">Haiku（速い・上限消費少）</option>
+        <option value="sonnet" data-i18n="model.sonnet">Sonnet（高精度・標準）</option>
+        <option value="opus" data-i18n="model.opus">Opus（最新・最強）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.ccModelCustomLabel">新しいモデルを直接指定（任意・上のより優先）</label>
+      <input id="drawerCcModelCustom" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" data-i18n-ph="settings.ccModelCustomPh" placeholder="例: sonnet / claude-sonnet-5">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" data-i18n="settings.ccModelCustomHint">クラウドで新モデルが出たら、ここにID（例 claude-sonnet-5）やエイリアス（sonnet）を入れれば即使えます。空欄なら上の選択を使用。</div>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.ccEffortLabel">effort（考える深さ）</label>
+      <select id="drawerCcEffort">
+        <option value="" data-i18n="effort.auto">auto（おまかせ）</option>
+        <option value="low" data-i18n="effort.low">low</option>
+        <option value="medium" data-i18n="effort.medium">medium</option>
+        <option value="high" data-i18n="effort.high">high</option>
+        <option value="xhigh" data-i18n="effort.xhigh">xhigh</option>
+        <option value="max" data-i18n="effort.max">max</option>
+      </select>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.thinkingLabel">拡張思考（thinking）</label>
+      <select id="drawerThinking">
+        <option value="on" data-i18n="thinking.on">オン（既定・じっくり考える）</option>
+        <option value="off" data-i18n="thinking.off">オフ（速い・不整合エラー回避）</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" data-i18n="settings.thinkingHint">オンだと難しい作業をより深く考えます。まれに出る「拡張思考の不整合」エラー時は自動で思考オフでやり直します。</div>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.permLabel">Claude Code 権限モード</label>
+      <select id="drawerPermMode">
+        <option value="bypassPermissions" data-i18n="perm.bypass">全部自動承認（おまかせ）</option>
+        <option value="acceptEdits" data-i18n="perm.acceptEdits">編集は自動・Bashは確認</option>
+        <option value="default" data-i18n="perm.default">毎回確認（推奨されない）</option>
+        <option value="plan" data-i18n="perm.plan">プランのみ作成（実行しない）</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.relaySection">中継AI（要約・一覧）</div>
+    <div class="field">
+      <label data-i18n="settings.relayModelLabel">中継モデル（要約・日報・ファイル一覧の橋渡し役）</label>
+      <select id="drawerRelayModel">
+        <option value="" data-i18n="relay.default">既定（最新Sonnet）</option>
+        <option value="claude-sonnet-5" data-i18n="model.sonnet5">Sonnet 5（速度と知能のバランス）</option>
+        <option value="sonnet" data-i18n="model.sonnet">Sonnet（高精度・標準）</option>
+        <option value="haiku" data-i18n="model.haiku">Haiku（速い・上限消費少）</option>
+        <option value="opus" data-i18n="model.opus">Opus（最新・最強）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.ccModelCustomLabel">新しいモデルを直接指定（任意・上のより優先）</label>
+      <input id="drawerRelayModelCustom" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" data-i18n-ph="settings.ccModelCustomPh" placeholder="例: sonnet / claude-sonnet-5">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" data-i18n="settings.relayModelHint">要約・翻訳・一覧などの軽い中継だけに使うモデル。作業（指示実行）のモデルとは別枠です。空欄なら最新Sonnet。</div>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.relayEffortLabel">中継の effort（考える深さ）</label>
+      <select id="drawerRelayEffort">
+        <option value="" data-i18n="effort.auto">auto（おまかせ）</option>
+        <option value="low" data-i18n="effort.low">low</option>
+        <option value="medium" data-i18n="effort.medium">medium</option>
+        <option value="high" data-i18n="effort.high">high</option>
+        <option value="xhigh" data-i18n="effort.xhigh">xhigh</option>
+        <option value="max" data-i18n="effort.max">max</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" data-i18n="settings.relayEffortHint">中継（要約・日報・一覧）の考える深さ。速さ重視なら low、精度重視なら high 以上。空欄はおまかせ。</div>
+    </div>
+  </div>
+
+  <div class="drawer-section" id="projOverrideSection" style="display:none;">
+    <div class="drawer-section-title" data-i18n="settings.projOverride">📁 このプロジェクトだけの設定</div>
+    <div id="projOverrideName" style="font-size:12px;color:var(--muted);margin-bottom:4px;"></div>
+    <div class="field">
+      <label data-i18n="settings.ccModelLabel">モデル（任意・空欄でデフォルト）</label>
+      <select id="drawerProjModel">
+        <option value="" data-i18n="proj.followGlobal">共通設定どおり</option>
+        <option value="claude-fable-5" data-i18n="model.fable5">Fable 5（最上位・長時間エージェント）</option>
+        <option value="claude-sonnet-5" data-i18n="model.sonnet5">Sonnet 5（速度と知能のバランス）</option>
+        <option value="haiku" data-i18n="model.haiku">Haiku（速い・上限消費少）</option>
+        <option value="sonnet" data-i18n="model.sonnet">Sonnet（高精度・標準）</option>
+        <option value="opus" data-i18n="model.opus">Opus（最新・最強）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.ccModelCustomLabel">新しいモデルを直接指定（任意・上のより優先）</label>
+      <input id="drawerProjModelCustom" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" data-i18n-ph="settings.ccModelCustomPh" placeholder="例: sonnet / claude-sonnet-5">
+    </div>
+    <div class="field">
+      <label data-i18n="settings.ccEffortLabel">effort（考える深さ）</label>
+      <select id="drawerProjEffort">
+        <option value="" data-i18n="proj.followGlobal">共通設定どおり</option>
+        <option value="low" data-i18n="effort.low">low</option>
+        <option value="medium" data-i18n="effort.medium">medium</option>
+        <option value="high" data-i18n="effort.high">high</option>
+        <option value="xhigh" data-i18n="effort.xhigh">xhigh</option>
+        <option value="max" data-i18n="effort.max">max</option>
+      </select>
+    </div>
+    <div class="field">
+      <label data-i18n="settings.thinkingLabel">拡張思考（thinking）</label>
+      <select id="drawerProjThinking">
+        <option value="" data-i18n="proj.followGlobal">共通設定どおり</option>
+        <option value="on" data-i18n="thinking.on">オン（既定・じっくり考える）</option>
+        <option value="off" data-i18n="thinking.off">オフ（速い・不整合エラー回避）</option>
+      </select>
+    </div>
+    <div style="font-size:11px;color:var(--muted);" data-i18n="proj.overrideHint">今選択中のプロジェクトにだけ効きます。空欄（共通設定どおり）なら上のClaude Code設定を使います。</div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.projManage">📂 プロジェクト管理</div>
+    <div id="projManageList"></div>
+    <div class="field">
+      <label data-i18n="proj.addName">名前</label>
+      <input id="projAddName" type="text" autocomplete="off">
+    </div>
+    <div class="field">
+      <label data-i18n="proj.addPath">PC上のフォルダパス</label>
+      <input id="projAddPath" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="例: C:\repos\myapp">
+    </div>
+    <button class="drawer-btn" id="projAddBtn" data-i18n="proj.addBtn">➕ プロジェクトを追加</button>
+    <div style="font-size:11px;color:var(--muted);" data-i18n="proj.manageHint">AIが触れるのは登録フォルダの配下だけです。削除は登録の解除で、PC上のフォルダは消えません。</div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title">🔒 金庫（Vault）</div>
+    <div class="field">
+      <label data-i18n="vault.relockLabel">🔒 再認証の間隔（自動ロックまで）</label>
+      <select id="drawerVaultLock">
+        <option value="300000">5分</option>
+        <option value="900000">15分</option>
+        <option value="3600000">1時間</option>
+        <option value="21600000">6時間</option>
+        <option value="86400000">24時間（1日）</option>
+        <option value="259200000">3日</option>
+        <option value="604800000">7日</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" data-i18n="vault.relockHint">5分〜7日。長くするほど再入力は減りますが、端末を他人に触られた時のリスクは上がります。</div>
+    </div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.notify">🔔 通知</div>
+    <div id="notifyStatus" style="font-size:12px;color:var(--muted);" data-i18n="notify.checking">確認中…</div>
+    <button class="drawer-btn" id="notifyToggleBtn" data-i18n="notify.enable">🔔 通知を許可する</button>
+    <div id="pushStatus" style="font-size:12px;color:var(--muted);margin-top:6px;"></div>
+    <button class="drawer-btn" id="pushEnableBtn" style="display:none;" data-i18n="push.enable">📲 スリープ中も通知を受け取る</button>
+    <button class="drawer-btn" id="pushTestBtn" style="display:none;" data-i18n="push.test">🔔 テスト通知を送る</button>
+    <div style="font-size:11px;color:var(--muted);" data-i18n="notify.hint">作業の完了などをこの端末に通知します。「スリープ中も通知」を有効にすると、アプリを閉じていても届きます。</div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.vscodeTunnel">VS Code トンネル</div>
+    <div class="field">
+      <label data-i18n="settings.tunnelNameLabel">トンネル名（start-all.ps1 の --name と合わせる）</label>
+      <input id="drawerVscodeName" type="text" placeholder="aihub-pc" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.passkey">スマホ認証（Passkey）</div>
+    <div id="passkeyStatus" style="font-size:12px;color:var(--muted);" data-i18n="passkey.checking">確認中…</div>
+    <button class="drawer-btn"  id="passkeyLoginBtn"  style="display:none;" data-i18n="passkey.login">🔓 Passkey でログイン</button>
+    <button class="drawer-btn"  id="passkeyRegisterPcBtn" style="display:none;" data-i18n="passkey.registerPc">📱 この端末を Passkey 登録（QR 経由）</button>
+    <button class="drawer-btn"  id="passkeyAddBtn"    style="display:none;" data-i18n="passkey.add">📱 別の端末を追加（PC で実行 → QR）</button>
+    <div id="passkeyDevices" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
+  <div class="drawer-section">
+    <div style="font-size:11px;color:var(--muted);text-align:center;" data-i18n="settings.autosaveHint">設定は変えた瞬間に自動保存されます。</div>
+    <button class="drawer-btn"  id="installAppBtn" data-i18n="drawer.install">📲 ホーム画面にアプリを追加</button>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title" data-i18n="settings.actions">操作</div>
+    <button class="drawer-warn"   id="restartBtn" data-i18n="action.restart">🔄 エージェントを再起動</button>
+    <button class="drawer-danger" id="clearHistoryBtn" data-i18n="action.clearHistory">🗑️ 会話履歴を削除</button>
+    <button class="drawer-danger" id="shutdownBtn" style="opacity:0.7;" data-i18n="action.shutdown">⏹ エージェントを完全停止</button>
+  </div>
+
+  <div class="drawer-section">
+    <!-- 版数表示。app.js が実行時に「実際に読み込まれた版」を書き込む。
+         ここに静的な数字は書かない＝古い app.js が動いていれば数字が古いまま出て、
+         「更新が届いていない」ことをスマホだけで確認できる。 -->
+    <div id="appVersionInfo" style="font-size:11px;color:var(--muted);text-align:center;"></div>
+  </div>
+</div>
+
+<!-- プロジェクト追加 -->
+<div class="drawer-overlay" id="projectOverlay"></div>
+<div id="addProjectDrawer">
+  <h3 data-i18n="addProj.title">＋ プロジェクト追加</h3>
+  <p data-i18n="addProj.desc">フォルダのパスを指定してプロジェクトを登録します。</p>
+  <input id="projName" placeholder="プロジェクト名（例: myapp）" data-i18n-ph="addProj.namePh">
+  <input id="projPath" placeholder="フォルダパス（例: C:\myapp）" data-i18n-ph="addProj.pathPh">
+  <div class="row2">
+    <button class="btn-cancel" id="projCancel" data-i18n="btn.cancel">キャンセル</button>
+    <button class="btn-add"    id="projSave" data-i18n="btn.add">追加</button>
+  </div>
+</div>
+
+<!-- 🔒 金庫（Vault） -->
+<div class="drawer-overlay" id="vaultOverlay"></div>
+<div id="vaultDrawer">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3 data-i18n="vault.title">🔒 金庫</h3>
+    <button id="vaultClose" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;">✕</button>
+  </div>
+
+  <!-- ロック画面 -->
+  <div id="vaultLocked">
+    <p style="font-size:13px;color:var(--muted);" data-i18n="vault.locked">金庫はロックされています</p>
+    <button class="btn-add" id="vaultFpBtn" style="width:100%;" data-i18n="vault.unlockFp">👆 指紋で開く</button>
+    <div id="vaultPinSetRow" style="display:none;flex-direction:column;gap:8px;margin-top:8px;">
+      <input id="vaultPinSet" type="password" inputmode="numeric" placeholder="暗号キーを設定（初回・数字4桁以上／文字も可）" data-i18n-ph="vault.pinSet">
+      <button class="btn-add" id="vaultPinSetBtn" style="width:100%;" data-i18n="vault.pinSetBtn">設定</button>
+    </div>
+    <div id="vaultPinRow" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+      <input id="vaultPin" type="password" inputmode="numeric" placeholder="暗号キー" data-i18n-ph="vault.pinPh">
+      <button class="btn-add" id="vaultPinBtn" style="width:100%;" data-i18n="vault.unlockBtn">開く</button>
+    </div>
+    <div id="vaultPinErr" style="display:none;color:var(--red);font-size:12px;"></div>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;" data-i18n="vault.pinHelp">暗号キーとは: 金庫の中身を暗号化する、自分で決める合言葉です。好きな数字4桁以上（文字を混ぜてもOK）を入力して決めます。この端末の外には出ず、忘れると中身は誰にも復元できません（作り直しになります）。普段は指紋で開くので、打つのは初回とキー変更時だけです。</p>
+  </div>
+
+  <!-- 開錠後 -->
+  <div id="vaultUnlocked" style="display:none;">
+    <div id="vaultTimer" style="font-size:12px;color:var(--green);"></div>
+    <p style="font-size:11px;color:var(--muted);" data-i18n="vault.howto">本文に {{名前}} と書くと送信時に値が注入されます。履歴・ログには名前だけ残ります。</p>
+    <div style="display:flex;gap:6px;">
+      <input id="vaultName" placeholder="名前（例: API_KEY）" data-i18n-ph="vault.namePh" style="flex:1;">
+    </div>
+    <div style="display:flex;gap:6px;align-items:stretch;">
+      <input id="vaultValue" type="password" placeholder="値（機密）" data-i18n-ph="vault.valuePh" style="flex:1;">
+      <button class="icon-btn" id="vaultMicBtn" type="button" title="音声で入力" data-i18n-title="vault.micValue" style="flex-shrink:0;font-size:20px;">🎤</button>
+    </div>
+    <button class="btn-add" id="vaultAddBtn" style="width:100%;" data-i18n="vault.addBtn">＋ 追加</button>
+    <div id="vaultList" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;"></div>
+    <button class="btn-cancel" id="vaultLockBtn" style="width:100%;margin-top:8px;" data-i18n="vault.lockBtn">🔒 今すぐロック</button>
+  </div>
+</div>
+
+<!-- ファイルツリー -->
+<div class="drawer-overlay" id="fileTreeOverlay"></div>
+<div id="fileTreeDrawer">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3>📂 <span id="fileTreeTitle" data-i18n="fileTree.title">ファイル</span></h3>
+    <button class="icon-btn" id="fileTreeClose">✕</button>
+  </div>
+  <div id="fileTreeContent" style="display:flex;flex-direction:column;gap:6px;"></div>
+</div>
+
+<!-- ジョブ履歴 -->
+<div class="drawer-overlay" id="jobsOverlay"></div>
+<div id="jobsDrawer" style="position:fixed;bottom:-100%;left:0;right:0;background:var(--card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;transition:bottom .25s ease;z-index:100;max-height:75dvh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3 style="font-size:16px;font-weight:700;" data-i18n="jobs.title">🗂 ジョブ履歴（このプロジェクト）</h3>
+    <button class="icon-btn" id="jobsClose">✕</button>
+  </div>
+  <p style="font-size:12px;color:var(--muted);" data-i18n="jobs.desc">実行中・完了したジョブを再表示できます。タップで会話に復元。</p>
+  <div id="jobsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+</div>
+
+<!-- プロセス -->
+<div class="drawer-overlay" id="procsOverlay"></div>
+<div id="procsDrawer" style="position:fixed;bottom:-100%;left:0;right:0;background:var(--card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;transition:bottom .25s ease;z-index:100;max-height:80dvh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3 style="font-size:16px;font-weight:700;" data-i18n="procs.title">🚀 プロセス（dev server 等）</h3>
+    <button class="icon-btn" id="procsClose">✕</button>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <input id="procCmd" placeholder='例: npm run dev / pytest -q' data-i18n-ph="procs.cmdPh" style="flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px;font-family:monospace;">
+    <button class="btn-sm" id="procRunBtn" data-i18n="procs.run" style="padding:8px 14px;background:var(--accent);color:white;border:none;">▶ 起動</button>
+  </div>
+  <div id="procsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+  <div id="procTail" style="display:none;flex-direction:column;gap:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div id="procTailTitle" style="font-size:13px;color:var(--muted);font-family:monospace;"></div>
+      <button class="btn-sm" id="procTailClose" data-i18n="procs.tailClose">閉じる</button>
+    </div>
+    <pre id="procTailContent" style="background:#000;color:#0f0;padding:10px;border-radius:8px;font-size:11px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+  </div>
+</div>
+
+<!-- IDE プロジェクト選択 -->
+<div class="drawer-overlay" id="idePickerOverlay"></div>
+<div id="idePickerDrawer" style="position:fixed;bottom:-100%;left:0;right:0;background:var(--card);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:20px;transition:bottom .25s ease;z-index:100;max-height:75dvh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3 id="idePickerTitle" style="font-size:16px;font-weight:700;" data-i18n="idePicker.title">プロジェクトを選択</h3>
+    <button class="icon-btn" id="idePickerClose">✕</button>
+  </div>
+  <p style="font-size:12px;color:var(--muted);" data-i18n="idePicker.desc">タップでそのプロジェクトをIDEで開いて、AIへの指示画面もスコープを切り替えます。</p>
+  <div id="idePickerList" style="display:flex;flex-direction:column;gap:8px;"></div>
+</div>
+
+<!-- 端末追加 QR モーダル -->
+<div id="qrModal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:24px;">
+  <div style="background:var(--card);border-radius:20px;padding:24px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px;">
+    <div style="font-size:18px;font-weight:700;text-align:center;" data-i18n="qr.title">📱 別の端末で開いて登録</div>
+    <p style="font-size:13px;color:var(--muted);line-height:1.6;text-align:center;" data-i18n-html="qr.desc">
+      スマホで下の QR をスキャン → ブラウザで開く → そのまま Passkey 登録に進みます。<br>
+      <b style="color:var(--yellow);">30 分以内に</b> 完了してください。
+    </p>
+    <div id="qrImg" style="background:white;padding:16px;border-radius:14px;display:flex;align-items:center;justify-content:center;"></div>
+    <div id="qrCountdown" style="font-size:13px;color:var(--muted);text-align:center;"></div>
+    <button id="qrRefresh" style="display:none;background:var(--accent,#6c63ff);color:white;border:0;border-radius:12px;padding:12px;font-size:14px;cursor:pointer;" data-i18n="qr.refresh">🔄 QR を再発行</button>
+    <a id="qrUrl" href="#" target="_blank" rel="noopener" style="font-size:11px;color:var(--muted);font-family:monospace;word-break:break-all;text-align:center;background:var(--bg);padding:8px;border-radius:8px;text-decoration:none;"></a>
+    <button id="qrCloseBtn" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;cursor:pointer;" data-i18n="common.close">閉じる</button>
+  </div>
+</div>
+
+<!-- 使い方ヘルプモーダル -->
+<div id="helpModal">
+  <div class="help-card">
+    <div data-i18n-html="help.body">
+    <div class="help-title">❓ 使い方・ボタンの説明</div>
+    <div class="help-lead">テキストで指示するだけで、PCのAI（Claude Code）がファイル編集・コマンド実行など作業します。各ボタンの役割は以下のとおりです。</div>
+
+    <h4>ヘッダー（最上段）</h4>
+    <div class="help-row"><span class="help-key">🔄</span><span><b>アプリを更新</b>。最新版のUIを取り込みます（表示が古いと感じたら）。</span></div>
+    <div class="help-row"><span class="help-key">❓</span><span><b>このヘルプ</b>を開きます。</span></div>
+    <div class="help-row"><span class="help-key">⚙️</span><span><b>設定</b>。接続先URL・モデル・権限・Passkey・エージェント再起動など。</span></div>
+    <div class="help-row"><span class="help-key">●</span><span>接続状態の表示（稼働中／切断）。</span></div>
+
+    <h4>Git バーの VS Code</h4>
+    <div class="help-row"><span class="help-key">⬡</span><span><b>VS Code</b>。選んだプロジェクトをブラウザ版 VS Code（vscode.dev）で開きます（タブレットや大きい画面で見たいとき向け）。</span></div>
+
+    <h4>プロジェクト選択の行</h4>
+    <div class="help-row"><span class="help-key">▾</span><span><b>プロジェクト選択</b>。指示の対象フォルダを切り替えます（左右スワイプでも切替）。</span></div>
+    <div class="help-row"><span class="help-key">🆕</span><span><b>新しい会話</b>。それまでの文脈を切ってまっさらから始めます（話が混ざったとき）。</span></div>
+    <div class="help-row"><span class="help-key">🗂</span><span><b>ジョブ履歴</b>。実行中・完了した指示の一覧。タップで会話に復元できます。</span></div>
+    <div class="help-row"><span class="help-key">🚀</span><span><b>プロセス管理</b>。<code>npm run dev</code> や <code>pytest</code> などの常駐起動とログ確認。</span></div>
+    <div class="help-row"><span class="help-key">📋</span><span><b>状況解説</b>。gitの変更などをAIが人間語で説明します。</span></div>
+    <div class="help-row"><span class="help-key">📅</span><span><b>今日のまとめ</b>。今日の作業をAIがレポートします。</span></div>
+    <div class="help-row"><span class="help-key">📂</span><span><b>ファイル一覧</b>。プロジェクト内を辿って中身を確認できます。</span></div>
+    <div class="help-row"><span class="help-key">＋</span><span><b>プロジェクト追加</b>。フォルダのパスを登録します。</span></div>
+
+    <h4>Git 操作（変更の保存・共有）</h4>
+    <div class="help-lead" style="margin:6px 0 10px;">Git は「作業の履歴を残して、ネット上（GitHub等）に保存・共有する」しくみです。下のボタンは選択中のプロジェクトに対して動きます。専門用語が分からなくても、下の順番どおり押せばOKです。</div>
+    <div class="help-row"><span class="help-key">↓</span><span><b>Pull（取り込み）</b>。ネット上の最新を手元に取り込みます。<b>作業を始める前</b>に押すと、他のPCで進めた分が反映されます。</span></div>
+    <div class="help-row"><span class="help-key">≡</span><span><b>Status（状態確認）</b>。今どのファイルを変えたか、一覧で確認できます。<b>「何をいじったっけ？」</b>を見たいとき。</span></div>
+    <div class="help-row"><span class="help-key">✓</span><span><b>Commit（保存）</b>。変更内容に名前（メッセージ）を付けて<b>手元の履歴に記録</b>します。押すとメッセージ入力が出ます。区切りのいいところで押す「セーブ」のイメージ。<u>変更は全部まとめて記録されます。</u></span></div>
+    <div class="help-row"><span class="help-key">↑</span><span><b>Push（送信）</b>。Commit で記録した内容を<b>ネット上（GitHub等）に送って共有・バックアップ</b>します。<u>Commit だけではネットに反映されません。最後に Push が必要です。</u></span></div>
+    <div class="help-row" style="opacity:.85;"><span class="help-key">▶</span><span><b>使う順番</b>：① ↓Pull（最初に最新化）→ ② 作業（指示や編集）→ ③ ≡Status（確認）→ ④ ✓Commit（保存）→ ⑤ ↑Push（送信）。</span></div>
+
+    <h4>入力エリア</h4>
+    <div class="help-row"><span class="help-key">⭐</span><span><b>お気に入り</b>。よく使う指示を登録してワンタップ送信。</span></div>
+    <div class="help-row"><span class="help-key">📎</span><span><b>添付</b>。画像やファイルを添付して指示できます。</span></div>
+    <div class="help-row"><span class="help-key">🔒</span><span><b>金庫（Vault）</b>。APIキー・パスワード・ニーモニック等の<b>機密値を、チャット履歴・画面・ログに残さず</b>AIとやり取りします。指紋か暗号キー（自分で決める合言葉・数字4桁以上）で開錠。値は<b>スマホ端末内だけ</b>に暗号化保存（PCには保存しません）。<b>双方向</b>に使えます↓</span></div>
+    <div class="help-row" style="opacity:.95;"><span class="help-key">A→</span><span><b>渡す（スマホ→PC）</b>。🔒で値を登録（例: 名前 <code>API_KEY</code>）→ 開錠中に名前チップをタップすると本文に <code class="help-copy">{{API_KEY}}</code> が入ります（タップでコピーも可）。送信時にだけ実値へ置換され、<b>履歴・ログには <code>{{API_KEY}}</code> の名前だけ</b>残ります。</span></div>
+    <div class="help-row" style="opacity:.95;"><span class="help-key">←B</span><span><b>受け取る（PC→スマホ）</b>。AIに <code class="help-copy">[[secret:名前]]値[[/secret]]</code> で囲んで返すよう頼みます。例:「生成したトークンを <code class="help-copy">[[secret:token]]…[[/secret]]</code> で囲んで返して」。実値は金庫チャネルへ分離され、<b>本文には <code>[[secret:token]]</code> だけ</b>。スマホで開錠時のみ表示。</span></div>
+    <div class="help-row" style="opacity:.85;"><span class="help-key">💡</span><span>上の <code class="help-copy">…</code> 部分は<b>タップでコピー</b>できます。値入力欄の🎤で<b>声で値を入れる</b>こともできます（声もチャットに残りません）。</span></div>
+    <div class="help-row"><span class="help-key">🎤</span><span><b>音声入力</b>（日本語）。話した内容が入力欄に入ります。</span></div>
+    <div class="help-row"><span class="help-key">⚡</span><span><b>今すぐ割り込み</b>（実行中だけ表示）。今の生成を止めて、<b>会話はそのまま</b>（文脈を保持）新しい指示で立て直します。「説明が足りなかった／やっぱ違う」時に。</span></div>
+    <div class="help-row"><span class="help-key">✕</span><span><b>中断</b>。実行中だけ表示され、作業を全部止めます（新しい指示は出しません）。</span></div>
+    <div class="help-row"><span class="help-key">↑</span><span><b>送信</b>。指示を送ります（Enterは改行・誤送信防止）。<b>実行中に押すと「終わってから実行」</b>（待ち行列に追加し、今のが終わってから続けて実行）。</span></div>
+
+    <h4>便利なジェスチャー</h4>
+    <div class="help-row"><span class="help-key">🕘</span><span>入力欄の<b>🕘ボタン</b>で過去に送った指示を呼び出し（タップで入力欄へ）。PCなら入力欄が空のとき<b>↑↓キー</b>でも可。</span></div>
+    <div class="help-row"><span class="help-key">↔</span><span>メッセージ画面を<b>左右スワイプ</b>でプロジェクト切替。</span></div>
+    <div class="help-row"><span class="help-key">⤓</span><span>一番上で<b>下に引く</b>と最新状態に更新。</span></div>
+    <div class="help-row"><span class="help-key">📋</span><span>AIの各返答の下の<b>📋</b>で<b>返答全文</b>をコピー。コードブロックは<b>右上の📋</b>でそのブロックだけコピー（メッセージ<b>長押し</b>でも可）。</span></div>
+    </div>
+
+    <button onclick="document.getElementById('helpModal').style.display='none'" style="margin-top:20px;width:100%;background:var(--accent);color:white;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;" data-i18n="common.close">閉じる</button>
+  </div>
+</div>
+
+<!-- インストールモーダル -->
+<div id="installModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);align-items:flex-end;justify-content:center;">
+  <div style="background:var(--card);border-radius:20px 20px 0 0;padding:28px 24px 36px;width:100%;max-width:480px;">
+    <div style="font-size:18px;font-weight:700;margin-bottom:16px;" data-i18n="install.title">📲 ホーム画面に追加</div>
+    <div id="installAndroid" style="display:none;">
+      <div style="font-size:14px;color:var(--muted);line-height:1.8;" data-i18n-html="install.android">
+        ① 右上「⋮」メニューをタップ<br>
+        ② <b style="color:var(--text);">「ホーム画面に追加」</b> をタップ<br>
+        ③ 「追加」で完了
+      </div>
+      <button id="installPromptBtn" style="display:none;margin-top:16px;width:100%;background:var(--accent);color:white;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;" data-i18n="install.installBtn">インストール</button>
+    </div>
+    <div id="installIos" style="display:none;">
+      <div style="font-size:14px;color:var(--muted);line-height:1.8;" data-i18n-html="install.ios">
+        ① 下部の <b style="color:var(--text);">「共有」ボタン（□↑）</b> をタップ<br>
+        ② <b style="color:var(--text);">「ホーム画面に追加」</b> をタップ<br>
+        ③ 「追加」で完了
+      </div>
+    </div>
+    <div id="installDone" style="display:none;">
+      <div style="font-size:14px;color:var(--green);line-height:1.8;" data-i18n-html="install.done">
+        ✅ すでにアプリとしてインストール済みです。
+      </div>
+    </div>
+    <button onclick="closeInstallModal()" style="margin-top:20px;width:100%;background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;cursor:pointer;" data-i18n="common.close">閉じる</button>
+  </div>
+</div>
+
+<script>
+  // app.js をバージョン付きURLで読み込む（エッジキャッシュ貫通）。音声入力ロジックも内包。
+  //
+  // ★自己修復ガード★
+  // index.html は no-store で必ず最新が届く（ここのコードは絶対に古くならない）。
+  // 一方 app.js は Service Worker キャッシュに古い版が居座ることがある（SW の
+  // network-first が端末側で壊れると「更新しても変わらない」が固着する）。
+  // そこで app.js ロード後に「index.html が期待する APP_VERSION」と「実際に読まれた
+  // app.js の APP_JS_VERSION」を突き合わせ、食い違ったら SW を全 unregister + 全キャッシュ
+  // 破棄して一度だけ取り直す。これで SW が壊れている端末でも必ず最新へ収束する。
+  // 全 SW を unregister + 全キャッシュ破棄する共通処理。
+  async function nukeServiceWorkers() {
+    try {
+      if ("serviceWorker" in navigator) {
+        var regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(function (r) { return r.unregister(); }));
+      }
+      if ("caches" in window) {
+        var keys = await caches.keys();
+        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      }
+    } catch (e) {}
+  }
+
+  // ★緊急脱出★ URL に ?nosw=1 が付いていたら、何を措いても SW を全消しして
+  // 素のページを取り直す。古い SW がアイコン欠けや 401 ループでアプリを操作不能に
+  // した端末を、ユーザーが1回のURL入力で確実に復旧できる最終手段。
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (q.get("nosw") === "1" && !sessionStorage.getItem("noswDone")) {
+      sessionStorage.setItem("noswDone", "1");
+      nukeServiceWorkers().then(function () {
+        location.replace("/ui/index.html?fresh=" + Date.now());
+      });
+      return;   // app.js は読み込まず、復旧リロードを待つ
+    }
+    loadAppJs();
+  })();
+
+  // app.js をバージョン付きURLで読み込む（エッジキャッシュ貫通）。
+  //
+  // ★自己修復ガード★
+  // index.html は no-store で必ず最新が届く（ここのコードは絶対に古くならない）。
+  // 一方 app.js は SW キャッシュに古い版が居座ることがある。app.js ロード後に
+  // index.html の APP_VERSION と、実際に読まれた app.js の APP_JS_VERSION を突き合わせ、
+  // 食い違ったら SW を全 unregister + 全キャッシュ破棄して一度だけ取り直す。
+  function loadAppJs() {
+    var v = window.APP_VERSION || "0";
+    var s = document.createElement("script");
+    s.src = "/ui/app.js?v=" + v;     // バージョン付きURLでエッジキャッシュ貫通
+    s.onload = function () {
+      var loaded = window.APP_JS_VERSION || "?";
+      if (loaded === v) return;       // 一致 = 健全。何もしない。
+      var guard = "selfHealedFor_" + v;
+      if (sessionStorage.getItem(guard) === "1") return;  // 直してもダメなら諦める（無限ループ回避）
+      sessionStorage.setItem(guard, "1");
+      nukeServiceWorkers().then(function () {
+        location.replace("/ui/index.html?heal=" + v + "&t=" + Date.now());
+      });
+    };
+    // app.js のロード自体に失敗（SW 経由で壊れた応答等）したときも自己修復する。
+    s.onerror = function () {
+      var guard = "selfHealedErr";
+      if (sessionStorage.getItem(guard) === "1") return;
+      sessionStorage.setItem(guard, "1");
+      nukeServiceWorkers().then(function () {
+        location.replace("/ui/index.html?heal=err&t=" + Date.now());
+      });
+    };
+    document.body.appendChild(s);
+  }
+</script>
+</body>
+</html>

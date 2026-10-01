@@ -1,0 +1,37 @@
+# environment / deps
+.env
+__pycache__/
+.venv/
+*.pyc
+
+# secrets — never commit
+agent/config/
+agent/config.json
+*.jwt
+passkey-qr-*.png
+# QR images encode registration-token URLs
+*-qr.png
+ui/*-qr.png
+*.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.mnemonic
+*.seed
+id_rsa*
+*_token*
+*secret*
+!scripts/secret-scan.py
+*credential*
+creds*.json
+*.sqlite
+*.db
+
+# large binary (download it yourself — see tunnel-setup/README.md)
+tunnel-setup/*.exe
+
+# runtime logs / PIDs (machine specific)
+logs/
